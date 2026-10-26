@@ -1,0 +1,27 @@
+# Whitelist: ignore everything, then re-include what is tracked
+/*
+!/.gitignore
+
+# Analysis code
+!/scripts/
+!/setup/
+/setup/refs/
+
+# renv: lockfile + bootstrap files (library is restored with renv::restore())
+!/renv_vhio136/
+/renv_vhio136/*
+!/renv_vhio136/.Rprofile
+!/renv_vhio136/renv.lock
+!/renv_vhio136/renv/
+/renv_vhio136/renv/*
+!/renv_vhio136/renv/activate.R
+!/renv_vhio136/renv/settings.json
+!/renv_vhio136/renv/.gitignore
+
+# conda/python environment exports
+!/renv_vhio136/env_lock/
+
+.Rhistory
+.RData
+.Rproj.user/
+*.html

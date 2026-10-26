@@ -1,0 +1,898 @@
+---
+title: "m04_plots_analyses_latest"
+author: "Endika Prieto"
+date: "2026-02-04"
+output: html_document
+---
+
+Set up.
+
+```{r setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+memory.limit(size = 16000)
+options(future.globals.maxSize = 10*1024^3)
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/libraries.R")
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/colors.R")
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/functions.R")
+```
+
+# Load data.
+
+```{r, warning=FALSE}
+sample <- "RIO136"
+compartment <- "cd8_int_nn"
+datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
+obj <- readRDS(file.path(datapath, sample, "seurat", paste0(compartment, ".rds"))) %>%
+  JoinLayers(assay = "RNA") %>%
+  NormalizeData(assay = "RNA", layer = "counts")
+required_metadata <- c("reactivity", "manual.annotation", "time")
+missing_metadata <- setdiff(required_metadata, colnames(obj@meta.data))
+if (length(missing_metadata) > 0) {
+  stop("Missing required metadata columns: ", paste(missing_metadata, collapse = ", "))
+}
+has_metadata_value <- function(x) {
+  x <- as.character(x)
+  !is.na(x) & !x %in% c("", "NA", "<NA>")
+}
+has_metadata_token <- function(x, tokens) {
+  vapply(
+    strsplit(ifelse(is.na(x), "", as.character(x)), ";", fixed = TRUE),
+    function(values) any(trimws(values) %in% tokens),
+    logical(1)
+  )
+}
+reactivity_chr <- as.character(obj$reactivity)
+has_reactive <- has_metadata_token(reactivity_chr, "Yes")
+has_autoreactive <- has_metadata_token(reactivity_chr, "Auto-reactive")
+has_nonreactive <- has_metadata_token(reactivity_chr, "No")
+has_viral_reactivity <- has_metadata_token(reactivity_chr, c("EBV", "CMV"))
+has_viral_database <- if ("database" %in% colnames(obj@meta.data)) {
+  has_metadata_value(obj$database)
+} else {
+  rep(FALSE, ncol(obj))
+}
+has_viral_epitope <- if ("epitope_species" %in% colnames(obj@meta.data)) {
+  has_metadata_token(obj$epitope_species, c("EBV", "CMV"))
+} else {
+  rep(FALSE, ncol(obj))
+}
+has_viral <- has_viral_reactivity | has_viral_database | has_viral_epitope
+has_matched_id <- if ("matched_ID" %in% colnames(obj@meta.data)) {
+  has_metadata_value(obj$matched_ID)
+} else {
+  rep(FALSE, ncol(obj))
+}
+manual_annotation_chr <- as.character(obj$manual.annotation)
+obj$comparison_category <- case_when(
+  has_reactive ~ "Reactive",
+  has_autoreactive ~ "Autoreactive",
+  has_nonreactive & has_viral ~ "Non-reactive;Viral_databases",
+  has_viral ~ "Viral_databases",
+  has_nonreactive ~ "Non-reactive",
+  has_matched_id ~ "Non-hits",
+  has_metadata_value(manual_annotation_chr) ~ manual_annotation_chr,
+  TRUE ~ NA_character_
+)
+obj$category <- obj$comparison_category
+print(table(obj$comparison_category, useNA = "ifany"))
+print(table(obj$time, obj$comparison_category, useNA = "ifany"))
+rm(
+  reactivity_chr,
+  manual_annotation_chr,
+  has_reactive,
+  has_autoreactive,
+  has_nonreactive,
+  has_viral_reactivity,
+  has_viral_database,
+  has_viral_epitope,
+  has_viral,
+  has_matched_id
+)
+category_colors <- c(
+  "Reactive"                       = "red3",
+  "Autoreactive"                   = "#E69F00",
+  "Viral_databases"                = "#3c4b99",
+  "Non-reactive"                   = "gray20",
+  "Non-hits"                       = "gray60",
+  "Non-reactive;Viral_databases"   = "gray80",
+  manual_colors
+)
+plots_list <- list()
+gene_sets <- list()
+iTAG_signature_plots <- list()
+iTAG_signature_markers <- list()
+```
+
+# Time-specific iTAG signatures.
+
+The phenotype comparisons are generated from a mutually exclusive category. Reactive and reference-database categories take priority over `manual.annotation`.
+
+```{r, fig.width=15}
+time_points <- c("pre", "post1", "post2", "post6")
+comparison_groups <- c(
+  "CD8_TCM"                = "CD8 TCM",
+  "CD8_activated_TCM_like" = "CD8 activated TCM-like",
+  "CD8_activated_TEM"      = "CD8 activated TEM",
+  "CD8_TEMRA_KLRG1"        = "CD8 TEMRA KLRG1+",
+  "CD8_TEMRA_FGFBP2"       = "CD8 TEMRA FGFBP2+",
+  "CD8_TEMRA_LILRB1"       = "CD8 TEMRA LILRB1+",
+  "CD8_proliferating"      = "CD8 proliferating",
+  "Viral_databases"        = "Viral_databases",
+  "Non_reactive"           = "Non-reactive",
+  "Non_hits"               = "Non-hits"
+)
+run_iTAG_comparison <- function(obj,
+                                time_point,
+                                comparison_group,
+                                pval_cutoff = 1e-3,
+                                logfc_cutoff = 1) {
+  groups <- c("Reactive", comparison_group)
+  group_counts <- table(
+    obj$category[
+      obj$time %in% time_point &
+        obj$category %in% groups
+    ]
+  )
+  group_counts <- group_counts[groups]
+  if (any(is.na(group_counts)) || any(group_counts < 2)) {
+    count_message <- paste0(
+      groups,
+      "=",
+      ifelse(is.na(group_counts), 0, group_counts),
+      collapse = ", "
+    )
+    warning(
+      "Skipping ", time_point, " / Reactive vs ", comparison_group,
+      ": insufficient cells (", count_message, ")."
+    )
+    return(list(
+      plot = NULL,
+      markers = character(0)
+    ))
+  }
+  res <- find_markers(
+    object = obj,
+    groups = groups,
+    time_point = time_point,
+    pval_cutoff = pval_cutoff,
+    logfc_cutoff = logfc_cutoff
+  )
+  markers <- c(
+    res$markers_group1,
+    if (length(res$markers_group2) > 0)
+      paste0(res$markers_group2, "-")
+  )
+  list(
+    plot = res$plot,
+    markers = markers
+  )
+}
+for (time_point in time_points) {
+  iTAG_signature_markers[[time_point]] <- list()
+  for (comparison_id in names(comparison_groups)) {
+    comparison_group <- unname(comparison_groups[[comparison_id]])
+    res <- run_iTAG_comparison(
+      obj = obj,
+      time_point = time_point,
+      comparison_group = comparison_group,
+      pval_cutoff = 1e-3,
+      logfc_cutoff = 1
+    )
+    iTAG_signature_markers[[time_point]][[comparison_id]] <- res$markers
+    plot_name <- paste(time_point, comparison_id, sep = "_")
+    if (!is.null(res$plot)) {
+      iTAG_signature_plots[[plot_name]] <- res$plot
+      print(res$plot)
+    }
+  }
+  signature_name <- paste0("iTAG_", time_point)
+  gene_sets[[signature_name]] <- iTAG_signature_markers[[time_point]] %>%
+    unlist(use.names = FALSE) %>%
+    unique() %>%
+    refine_gene_set()
+}
+```
+
+# Pan.
+
+```{r}
+gene_sets[["iTAG_all"]] <- unique(c(
+  gene_sets$iTAG_pre,
+  gene_sets$iTAG_post1,
+  gene_sets$iTAG_post2,
+  gene_sets$iTAG_post6
+)) %>%
+  refine_gene_set()
+empty_signatures <- names(gene_sets)[lengths(gene_sets) == 0]
+if (length(empty_signatures) > 0) {
+  stop(
+    "No genes were retained for: ",
+    paste(empty_signatures, collapse = ", ")
+  )
+}
+obj <- AddModuleScore_UCell(
+  obj,
+  features = gene_sets,
+  assay = "RNA",
+  w_neg = 0.15,
+  ncores = 8
+)
+```
+
+Checkpoint.
+
+```{r, warning=FALSE}
+# signatures
+dir.create(file.path(datapath, sample, "markers", compartment))
+saveRDS(gene_sets, file.path(datapath, sample, "markers", compartment, "itag_signatures.rds"))
+# gene_sets
+for(name in names(gene_sets)) {
+  file_path <- file.path(datapath, sample, "markers", compartment, paste0(name, ".txt"))
+  write.table(
+    gene_sets[[name]],
+    file = file_path,
+    quote = FALSE,
+    row.names = FALSE,
+    col.names = FALSE
+  )
+}
+# plots
+dir.create(file.path(datapath, sample, "markers", compartment, "plots", "genes"), recursive = TRUE, showWarnings = FALSE)
+for (i in names(iTAG_signature_plots)) {
+  pdf(file = file.path(datapath, sample, "markers", compartment, "plots", "genes", paste0(i, ".pdf")),
+      width = 297 / 25.4, height = 210 / 25.4)
+  print(iTAG_signature_plots[[i]])
+  dev.off()
+}
+```
+
+# Yield.
+
+```{r, warning=FALSE}
+my_comparisons <- c(
+  list(c("Reactive", "Autoreactive")),
+  lapply(
+    unname(comparison_groups),
+    function(comparison_group) c("Reactive", comparison_group)
+  )
+)
+g39 <- plot_box_with_stats(
+  seurat_object = obj %>% subset(!is.na(category) & category != "NA" & category != "Non-reactive;Viral_databases" & time == "pre"),
+  feature = "iTAG_pre_UCell",
+  group_by = "category",
+  comparisons = my_comparisons,
+  category_colors = category_colors
+  )
+g40 <- plot_box_with_stats(
+  seurat_object = obj %>% subset(!is.na(category) & category != "NA" & category != "Non-reactive;Viral_databases" & time == "post1"),
+  feature = "iTAG_post1_UCell",
+  group_by = "category",
+  comparisons = my_comparisons,
+  category_colors = category_colors
+  )
+g41 <- plot_box_with_stats(
+  seurat_object = obj %>% subset(!is.na(category) & category != "NA" & category != "Non-reactive;Viral_databases" & time == "post2"),
+  feature = "iTAG_post2_UCell",
+  group_by = "category",
+  comparisons = my_comparisons,
+  category_colors = category_colors
+  )
+g42 <- plot_box_with_stats(
+  seurat_object = obj %>% subset(!is.na(category) & category != "NA" & category != "Non-reactive;Viral_databases" & time == "pre"),
+  feature = "iTAG_all_UCell",
+  group_by = "category",
+  comparisons = my_comparisons,
+  category_colors = category_colors
+)
+g43 <- plot_box_with_stats(
+  seurat_object = obj %>% subset(!is.na(category) & category != "NA" & category != "Non-reactive;Viral_databases" & time == "post1"),
+  feature = "iTAG_all_UCell",
+  group_by = "category",
+  comparisons = my_comparisons,
+  category_colors = category_colors
+)
+g44 <- plot_box_with_stats(
+  seurat_object = obj %>% subset(!is.na(category) & category != "NA" & category != "Non-reactive;Viral_databases" & time == "post2"),
+  feature = "iTAG_all_UCell",
+  group_by = "category",
+  comparisons = my_comparisons,
+  category_colors = category_colors
+)
+g45 <- plot_box_with_stats(
+  seurat_object = obj %>% subset(!is.na(category) & category != "NA" & category != "Non-reactive;Viral_databases"),
+  feature = "iTAG_all_UCell",
+  group_by = "category",
+  comparisons = my_comparisons,
+  category_colors = category_colors
+)
+# save plot.
+p <- print(wrap_plots(g39, g40, g41,
+                 g42, g43, g44, g45, ncol = 4))
+plots_list[["Signatures_iTAG"]] <- p
+```
+
+# TRTBPL.
+
+Add TRTPBL signature to the dataset (https://doi.org/10.1038/s41467-026-69680-x)
+
+```{r}
+signatures <- fread("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/refs/signatures.tsv", header = TRUE)
+sigs <- lapply(signatures, function(x) unique(na.omit(x)))
+sigs <- list(TRTPBL = sigs$TRTPBL)
+signature.names <- paste0(names(sigs), "_UCell")
+TRTPBL_signature <- sigs$TRTPBL
+obj <- AddModuleScore_UCell(obj, assay = "SCT", features = sigs, ncores = 8)
+saveRDS(obj, file.path(datapath, sample, "seurat", paste0(compartment, ".rds")))
+rm(sigs, signature.names)
+```
+
+### Pre
+
+Performance 
+
+```{r}
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
+
+plots_cd3 <- generate_plots(obj, "pre", "bulk", "Pre-Tx")
+plots_cd3pd1 <- generate_plots(obj, "pre", c("bulk", "pd1"), "Pre-Tx")
+
+plots_list[["iTAG_signature_pre"]] <- wrap_plots(
+  plots_cd3$a, plots_cd3$b, plots_cd3$c,
+  plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
+  ncol = 3
+) + plot_annotation(title = "Pre-Tx")
+```
+
+### Post1
+
+```{r}
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
+
+plots_cd3 <- generate_plots(obj, "post1", "bulk", "Post1")
+plots_cd3pd1 <- generate_plots(obj, "post1", c("bulk", "pd1"), "Post1")
+
+plots_list[["iTAG_signature_post1"]] <- wrap_plots(
+  plots_cd3$a, plots_cd3$b, plots_cd3$c,
+  plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
+  ncol = 3
+) + plot_annotation(title = "Post1")
+```
+
+### Post2
+
+```{r}
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
+
+plots_cd3 <- generate_plots(obj, "post2", "bulk", "Post2")
+plots_cd3pd1 <- generate_plots(obj, "post2", c("bulk", "pd1"), "Post2")
+
+plots_list[["iTAG_signature_post2"]] <- wrap_plots(
+  plots_cd3$a, plots_cd3$b, plots_cd3$c,
+  plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
+  ncol = 3
+) + plot_annotation(title = "Post2")
+```
+
+### Post6
+
+```{r}
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
+
+plots_cd3 <- generate_plots(obj, "post6", "bulk", "Post6")
+plots_cd3pd1 <- generate_plots(obj, "post6", c("bulk", "pd1"), "Post6")
+
+plots_list[["iTAG_signature_post6"]] <- wrap_plots(
+  plots_cd3$a, plots_cd3$b, plots_cd3$c,
+  plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
+  ncol = 3
+) + plot_annotation(title = "Post6")
+```
+
+### All
+
+```{r}
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
+
+plots_cd3 <- generate_plots_all(
+  object = obj,
+  time_filter = NULL,
+  enrichment_filter = "bulk",
+  title_suffix = "All"
+)
+plots_cd3pd1 <- generate_plots_all(
+  object = obj,
+  time_filter = NULL,
+  enrichment_filter = c("bulk", "pd1"),
+  title_suffix = "All"
+)
+
+plots_list[["iTAG_signature_all"]] <- wrap_plots(
+  plots_cd3$a, plots_cd3$b, plots_cd3$c,
+  plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
+  ncol = 3
+) + plot_annotation(title = "Post6")
+```
+
+# Yossef et al.
+
+The data were downloaded from dbGAP and aligned with Cell Ranger, then processed following standard procedures. /Users/endika.prieto/Library/CloudStorage/OneDrive-VHIO/PBL/Single_Cell/SC_Pipeline/Scripts/Public_Yossef_et_al/M01_Script.Rmd.
+
+```{r}
+sample2 <- "public_yossef_et_al"
+compartment2 <- "int_filt_annot"
+datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
+object.yossef <- readRDS(file.path(datapath, sample2, "seurat", paste0(compartment2, ".rds")))
+# Signatures.
+signatures <- c(
+  readRDS(file.path("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/RIO136/markers", compartment, "itag_signatures.rds"))
+)
+signatures$TRTPBL <- TRTPBL_signature
+object.yossef <- AddModuleScore_UCell(object.yossef, assay = "RNA", features = signatures, w_neg = 0.15, ncores=8)
+saveRDS(object.yossef, file.path(datapath, sample2, "seurat", paste0(compartment2, ".rds")))
+```
+
+Overall performance of the transcriptomic signatures.
+
+```{r}
+g1 <- plot_box_with_stats(
+  seurat_object = object.yossef,
+  feature = "iTAG_pre_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors
+  )
+g2 <- plot_box_with_stats(
+  seurat_object = object.yossef,
+  feature = "iTAG_post1_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors
+  )
+g3 <- plot_box_with_stats(
+  seurat_object = object.yossef,
+  feature = "iTAG_post2_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors
+  )
+g4 <- plot_box_with_stats(
+  seurat_object = object.yossef,
+  feature = "iTAG_all_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors
+)
+g5 <- plot_box_with_stats(
+  seurat_object = object.yossef,
+  feature = "Yossef_NeoTCR_PBL_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors
+)
+p <- wrap_plots(list(g1, g2, g3, g4, g5), ncol = 5)
+plots_list[["iTAG_signature_on_Yossef_yield"]] <- p
+```
+
+The number of TCRs captured by iTAG signatures in the Yossef et al. cohort.
+
+```{r}
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/yossef-et-al/setup/functions.R")
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+performance_plots <- list()
+for (i in unique(object.yossef$patient)) {
+  res <- plot_reactive_top(object.yossef,
+                           sample = i,
+                           pivot_cols = signatures_to_compare,
+                           top_n = top_clonotypes
+                           )
+  performance_plots[[i]] <- res$plot
+}
+p <- wrap_plots(performance_plots, ncol = 4)
+plots_list[["iTAG_signature_on_Yossef_capture"]] <- p
+```
+
+# Heatmap
+
+Old staff (Ricardo's approach)
+```{r, warning=FALSE}
+data <- fread("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/manuscript/illustrator/plots/heatmap/genes.csv") %>%
+  filter(value == 1) %>%
+  transmute(
+    Gene,
+    categories = sub("\\.bin$", "", categories)
+  ) %>%
+  distinct()
+colnames(data) <- c("gene", "category")
+ordered_genes <- data %>%
+  arrange(category, gene) %>%
+  distinct(gene) %>%
+  pull(gene)
+available_genes <- rownames(GetAssayData(obj, layer = "data"))
+ordered_genes <- intersect(ordered_genes, available_genes)
+expr_matrix <- GetAssayData(obj, layer = "data")[ordered_genes, , drop = FALSE]
+metadata <- obj@meta.data %>%
+  mutate(category = ifelse(!is.na(category) & category == "Reactive", "Reactive", "Other")) %>%
+  select(category, time)
+expr_df <- t(expr_matrix) %>% as.data.frame()
+expr_df$category <- metadata$category
+expr_df$Time <- metadata$time
+expr_summary <- expr_df %>%
+  group_by(category, Time) %>%
+  summarise(across(all_of(ordered_genes), mean, na.rm = TRUE), .groups = "drop")
+reactive_means <- expr_summary %>%
+  filter(category == "Reactive") %>%
+  column_to_rownames("Time") %>%
+  select(-category)
+other_means <- expr_summary %>%
+  filter(category == "Other") %>%
+  column_to_rownames("Time") %>%
+  select(-category)
+common_times <- intersect(rownames(reactive_means), rownames(other_means))
+reactive_means <- reactive_means[common_times, , drop = FALSE]
+other_means    <- other_means[common_times, , drop = FALSE]
+log2FC_matrix <- log2((reactive_means + 1e-6) / (other_means + 1e-6))
+log2FC_matrix <- log2FC_matrix[, ordered_genes, drop = FALSE]
+hm <- t(log2FC_matrix)
+cats <- sort(unique(data$category))
+annotation_row <- data %>%
+  mutate(value = 1L) %>%
+  pivot_wider(names_from = category, values_from = value, values_fill = 0L) %>%
+  filter(gene %in% ordered_genes) %>%
+  distinct(gene, .keep_all = TRUE) %>%
+  column_to_rownames("gene") %>%
+  select(all_of(cats)) %>%
+  mutate(across(everything(), ~ factor(.x, levels = c(0, 1))))
+annotation_row <- annotation_row[rownames(hm), , drop = FALSE]
+annotation_colors <- setNames(
+  replicate(length(cats), c("0" = "white", "1" = "black"), simplify = FALSE),
+  cats
+)
+p <- pheatmap(
+  hm,
+  scale = "row",
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  annotation_row = annotation_row,
+  annotation_colors = annotation_colors,
+  color = colorRampPalette(c("#4575b4", "#f7f7f7", "#d73027"))(100),
+  main = "Log2 FC Reactive vs Other by Gene and Time",
+  cellheight = 10,
+  cellwidth = 10
+)
+plots_list[["iTAG_signature_heatmap"]] <- p
+```
+
+New staff, just top-20 DEGs between Reactive vs Other per timepoint, with no duplicates across timepoints.
+```{r}
+top_n_per_timepoint <- 20
+time_order <- c("pre", "post1", "post2", "post6")
+assay_use <- DefaultAssay(obj)
+test_use <- "wilcox"
+signature_genes <- signatures$iTAG_all %>%
+  unique() %>%
+  .[!grepl("-$", .)]
+obj_de <- obj
+if (inherits(obj_de[[assay_use]], "Assay5")) {
+  obj_de <- JoinLayers(
+    object = obj_de,
+    assay = assay_use
+  )
+}
+available_genes <- rownames(obj_de[[assay_use]])
+signature_genes <- intersect(
+  signature_genes,
+  available_genes
+)
+if (length(signature_genes) == 0) {
+  stop("No genes from signatures$iTAG_all were found in the selected assay.")
+}
+obj_de$reactive_vs_other <- ifelse(
+  !is.na(obj_de$category) &
+    obj_de$category == "Reactive",
+  "Reactive",
+  "Other"
+)
+obj_de$Time <- factor(
+  as.character(obj_de$time),
+  levels = time_order
+)
+markers_by_time <- vector(
+  mode = "list",
+  length = length(time_order)
+)
+names(markers_by_time) <- time_order
+cell_counts_by_time <- vector(
+  mode = "list",
+  length = length(time_order)
+)
+names(cell_counts_by_time) <- time_order
+for (tm in time_order) {
+  cells_tm <- rownames(obj_de@meta.data)[
+    !is.na(obj_de$Time) &
+      as.character(obj_de$Time) == tm
+  ]
+  if (length(cells_tm) == 0) {
+    warning(
+      paste0(
+        "No cells were found for timepoint: ",
+        tm
+      )
+    )
+    next
+  }
+  obj_tm <- subset(
+    obj_de,
+    cells = cells_tm
+  )
+  Idents(obj_tm) <- "reactive_vs_other"
+  group_counts <- table(
+    Idents(obj_tm)
+  )
+  cell_counts_by_time[[tm]] <- tibble(
+    Time = tm,
+    group = names(group_counts),
+    n_cells = as.integer(group_counts)
+  )
+  if (
+    !"Reactive" %in% names(group_counts) ||
+      !"Other" %in% names(group_counts)
+  ) {
+    warning(
+      paste0(
+        tm,
+        " does not contain both Reactive and Other cells."
+      )
+    )
+    next
+  }
+  if (
+    group_counts[["Reactive"]] < 3 ||
+      group_counts[["Other"]] < 3
+  ) {
+    warning(
+      paste0(
+        tm,
+        " contains fewer than 3 cells in at least one group."
+      )
+    )
+    next
+  }
+  features_tm <- intersect(
+    signature_genes,
+    rownames(obj_tm[[assay_use]])
+  )
+  markers_tm <- FindMarkers(
+    object = obj_tm,
+    ident.1 = "Reactive",
+    ident.2 = NULL,
+    assay = assay_use,
+    slot = "data",
+    features = features_tm,
+    test.use = test_use,
+    logfc.threshold = 0,
+    min.pct = 0,
+    min.diff.pct = -Inf,
+    only.pos = FALSE,
+    base = 2,
+    fc.name = "avg_log2FC",
+    verbose = FALSE
+  ) %>%
+    rownames_to_column("gene") %>%
+    as_tibble() %>%
+    mutate(
+      Time = factor(
+        tm,
+        levels = time_order
+      ),
+      n_Reactive = as.integer(
+        group_counts[["Reactive"]]
+      ),
+      n_Other = as.integer(
+        group_counts[["Other"]]
+      )
+    )
+  markers_by_time[[tm]] <- markers_tm
+}
+findmarkers_results <- bind_rows(
+  markers_by_time
+) %>%
+  mutate(
+    Time = factor(
+      as.character(Time),
+      levels = time_order
+    )
+  ) %>%
+  arrange(
+    Time,
+    desc(avg_log2FC),
+    gene
+  )
+cell_counts_by_time <- bind_rows(
+  cell_counts_by_time
+) %>%
+  mutate(
+    Time = factor(
+      Time,
+      levels = time_order
+    )
+  ) %>%
+  arrange(
+    Time,
+    group
+  )
+print(cell_counts_by_time)
+if (nrow(findmarkers_results) == 0) {
+  stop("FindMarkers did not return results for any timepoint.")
+}
+top_genes_by_time <- findmarkers_results %>%
+  filter(
+    is.finite(avg_log2FC),
+    avg_log2FC > 0
+  ) %>%
+  group_by(Time) %>%
+  arrange(
+    desc(avg_log2FC),
+    gene,
+    .by_group = TRUE
+  ) %>%
+  slice_head(
+    n = top_n_per_timepoint
+  ) %>%
+  mutate(
+    rank_within_timepoint = row_number()
+  ) %>%
+  ungroup() %>%
+  arrange(
+    Time,
+    rank_within_timepoint
+  ) %>%
+  select(
+    Time,
+    rank_within_timepoint,
+    gene,
+    avg_log2FC,
+    pct.1,
+    pct.2,
+    p_val,
+    p_val_adj,
+    n_Reactive,
+    n_Other
+  )
+print(top_genes_by_time)
+top_gene_counts <- top_genes_by_time %>%
+  count(
+    Time,
+    name = "n_selected"
+  )
+print(top_gene_counts)
+selected_genes <- top_genes_by_time %>%
+  pull(gene) %>%
+  unique()
+if (length(selected_genes) == 0) {
+  stop("No genes with positive avg_log2FC were available for the heatmap.")
+}
+common_times <- time_order[
+  time_order %in%
+    as.character(
+      unique(findmarkers_results$Time)
+    )
+]
+hm_long <- tidyr::crossing(
+  gene = selected_genes,
+  Time = common_times
+) %>%
+  left_join(
+    findmarkers_results %>%
+      transmute(
+        gene,
+        Time = as.character(Time),
+        avg_log2FC
+      ),
+    by = c(
+      "gene",
+      "Time"
+    )
+  )
+if (anyNA(hm_long$avg_log2FC)) {
+  warning(
+    "Some selected gene-timepoint combinations were absent from FindMarkers and were replaced with 0."
+  )
+}
+hm <- hm_long %>%
+  mutate(
+    avg_log2FC = replace_na(
+      avg_log2FC,
+      0
+    ),
+    Time = factor(
+      Time,
+      levels = common_times
+    )
+  ) %>%
+  pivot_wider(
+    names_from = Time,
+    values_from = avg_log2FC
+  ) %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+hm <- hm[
+  selected_genes,
+  common_times,
+  drop = FALSE
+]
+p <- pheatmap(
+  hm,
+  scale = "row",
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(c("#4575b4", "#f7f7f7", "#d73027"))(100),
+  main = paste0(
+    "Top ",
+    top_n_per_timepoint,
+    " FindMarkers Genes per Timepoint: Reactive vs. All Other Cells"
+  ),
+  cellheight = 10,
+  cellwidth = 20
+)
+plots_list[["iTAG_signature_heatmap"]] <- p
+```
+
+# Save plots.
+
+```{r}
+plots_dir <- file.path(
+  datapath,
+  sample,
+  "markers/plots"
+)
+dir.create(
+  plots_dir,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+for (i in names(plots_list)) {
+  out <- file.path(
+    plots_dir,
+    paste0(i, ".pdf")
+  )
+  tryCatch(
+    {
+      ggsave(
+        filename = out,
+        plot = plots_list[[i]],
+        device = "pdf",
+        width = 297 / 12.5,
+        height = 210 / 12.5,
+        units = "in",
+        limitsize = FALSE
+      )
+      message(
+        sprintf(
+          "Saved: %s",
+          out
+        )
+      )
+    },
+    error = function(e) {
+      message(
+        sprintf(
+          "Skipping '%s': %s",
+          i,
+          conditionMessage(e)
+        )
+      )
+    }
+  )
+}
+```
