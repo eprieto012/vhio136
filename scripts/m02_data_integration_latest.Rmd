@@ -12,6 +12,8 @@ setup_dir <- normalizePath("../setup", mustWork = TRUE)
 source(file.path(setup_dir, "setup.R"), local = TRUE)
 plots_list <- list()
 sample <- "vhio136"
+int_dir <- file.path(datapath, sample, "integrated")
+dir.create(file.path(int_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
 ```
 
 # merge
@@ -19,8 +21,8 @@ sample <- "vhio136"
 Samples already pre-processed with m01 and annotated as cd4 or cd8 based on pdfCluster and scGate consensus.
 
 ```{r}
-object_RP <- readRDS(file.path(datapath, sample, "seurat", "SCT_rootpath.rds"))
-object_VH <- readRDS(file.path(datapath, sample, "seurat", "SCT_vhio.rds"))
+object_RP <- readRDS(file.path(datapath, sample, "rootpath", "seurat", "SCT_rootpath.rds"))
+object_VH <- readRDS(file.path(datapath, sample, "vhio", "seurat", "SCT_vhio.rds"))
 obj <- list(object_RP, object_VH)
 obj <- Reduce(merge, obj)
 obj@meta.data$tag <- factor(obj@meta.data$tag, levels = c("pre_bulk1", "pre_bulk2", "pre_bulk3", "pre_pd1", "post1_bulk", "post1_pd1", "post2_bulk1", "post2_bulk2", "post2_bulk3", "post2_pd1", "post6_bulk", "post6_pd1"))
@@ -140,7 +142,7 @@ format_chosen_ids <- function(x) {
 obj@meta.data$id <- format_chosen_ids(obj@meta.data$id)
 message("A total of ", length(unique(unlist(strsplit(na.omit(obj@meta.data$id), ";", fixed = TRUE)))), " unique tested TCRs have been annotated")
 # --- Load TCR library metadata ---
-tcr_lib <- fread(file.path(dirname(datapath), "data/outs/tcr_lib_annotated.txt"))
+tcr_lib <- fread(file.path(datapath_load, "outs/tcr_lib_annotated.txt"))
 tcr_lib_dt <- as.data.table(copy(tcr_lib))
 if (!"criteria_simplified" %in% colnames(tcr_lib_dt) && "tag_combination_controls" %in% colnames(tcr_lib_dt)) {
   tcr_lib_dt[, criteria_simplified := tag_combination_controls]
@@ -260,7 +262,7 @@ rownames(obj@meta.data) <- Cells(obj)
 
 Annotate T-cell functional states by mapping cells to the ProjecTILs human reference atlas: <https://github.com/carmonalab/ProjecTILs>
 
-```{r, eval=FALSE}
+```{r}
 # --- Download ProjecTILs human reference maps (first run only) ---
 ref_dir <- file.path(project_dir, "setup", "refs")
 dir.create(ref_dir, recursive = TRUE, showWarnings = FALSE)
@@ -379,7 +381,7 @@ rm(chains_data)
 Fresh biopsy
 
 ```{r}
-biopsy_trb <- fread(file.path(dirname(datapath), "data/outs/p136-Tfrozen_TCRB in frame.tsv")) %>%
+biopsy_trb <- fread(file.path(datapath_load, "outs/p136-Tfrozen_TCRB in frame.tsv")) %>%
   transmute(tcrb = str_c(aminoAcid, vMaxResolved, jMaxResolved, sep = "_")) %>%
   mutate(
     tcrb = str_replace_all(
@@ -418,7 +420,7 @@ Epitope species: "CMV", "EBV", "HCV", "HIV-1", "HomoSapiens", "InfluenzaA", "SAR
 ```{r}
 obj@meta.data$cell_id <- rownames(obj@meta.data)
 # TCRa
-tra_vdjdb_orig <- fread(file.path(dirname(datapath), "data/outs/vdjdb/vdjdb_rio136_tra.tsv"), header = T)
+tra_vdjdb_orig <- fread(file.path(datapath_load, "outs/vdjdb/vdjdb_rio136_tra.tsv"), header = T)
 tra_vdjdb <- tra_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(tra_vdjdb) <- c("tra", "v_gene", "j_gene", "epitope_gene", "epitope_species")
 tra_vdjdb$v_gene <- clean_multi_gene(tra_vdjdb$v_gene)
@@ -432,7 +434,7 @@ tra_vdjdb <- tra_vdjdb %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "VDJdb_TRA")
 # TCRb
-trb_vdjdb_orig <- fread(file.path(dirname(datapath), "data/outs/vdjdb/vdjdb_rio136_trb.tsv"), header = T)
+trb_vdjdb_orig <- fread(file.path(datapath_load, "outs/vdjdb/vdjdb_rio136_trb.tsv"), header = T)
 trb_vdjdb <- trb_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(trb_vdjdb) <- c("trb", "v_gene", "j_gene", "epitope_gene", "epitope_species")
 trb_vdjdb$v_gene <- clean_multi_gene(trb_vdjdb$v_gene)
@@ -447,7 +449,7 @@ trb_vdjdb <- trb_vdjdb %>%
   mutate(match = "VDJdb_TRB")
 # TCR
 # Verify that the TRB+TRA sequences described at https://vdjdb.cdr3.net/search matches the TRB+TRA of the single-cell data (reconstructed TCR). To do this, download the data set with the CDR3 paired only option, reconstruct the TCR, and check for a match.
-vdjdb_paired <- fread(file.path(dirname(datapath), "data/outs/vdjdb/vdjdb_rio136_paired.tsv"), header = T)
+vdjdb_paired <- fread(file.path(datapath_load, "outs/vdjdb/vdjdb_rio136_paired.tsv"), header = T)
 complex.id <- unique(vdjdb_paired$complex.id)
 vdjdb_paired_tcr <- list()
 for (i in complex.id) {
@@ -489,7 +491,7 @@ HLA-matched viral TCR https://iedb.org/
 
 ```{r, warning=FALSE, message=FALSE}
 # Download the whole database and filtered for HLA-compatible entries for both tcrb or tcra+tcrb.
-tcr_iedb_data <- readxl::read_excel(file.path(dirname(datapath), "data/outs/iedb/receptor_table_export_1713292478.xlsx"))
+tcr_iedb_data <- readxl::read_excel(file.path(datapath_load, "outs/iedb/receptor_table_export_1713292478.xlsx"))
 tcr_iedb_data <- as.data.frame(tcr_iedb_data)
 tcr_iedb_data <- tcr_iedb_data %>% select(c("MHC Allele Names", "Type...13", "CDR3 Curated...24", "Type...42", "CDR3 Curated...53", "Source Organism", "Source Molecule"))
 tcr_iedb_data <- subset(tcr_iedb_data, tcr_iedb_data$`Source Organism` %in% c("Human herpesvirus 5 (Human cytomegalovirus)",
@@ -567,7 +569,7 @@ rm(tcr_vdjdb, tra_iedb, tra_vdjdb, trb_iedb, trb_vdjdb, viral_info)
 Cell-cycle score + Yossef's gene-signature scores for tumor-reactive PBLs @ Cancer Cell Table S5
 
 ```{r}
-signatures <- fread(file.path(dirname(datapath), "data/outs/signatures.tsv"), header = TRUE)
+signatures <- fread(file.path(datapath_load, "outs/signatures.tsv"), header = TRUE)
 sigs <- lapply(signatures, function(x) unique(na.omit(x)))
 sigs <- c(
   sigs,
@@ -738,7 +740,7 @@ obj.cd8.int <- run_dimred_cluster(
 )
 DimPlot(obj.cd8.int, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
 DimPlot(obj.cd8.int, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
-saveRDS(obj.cd8.int, file.path(datapath, sample, "seurat/cd8_int.rds"))
+saveRDS(obj.cd8.int, file.path(int_dir, "seurat/cd8_int.rds"))
 ```
 
 ### Bulk + PD-1^hi (non-naïve)
@@ -883,7 +885,7 @@ DimPlot(
 ) + theme(aspect.ratio = 1)
 
 # --- Save with the manual annotations ---
-saveRDS(obj.cd8.nn, file.path(datapath, sample, "seurat/cd8_int_nn.rds"))
+saveRDS(obj.cd8.nn, file.path(int_dir, "seurat/cd8_int_nn.rds"))
 ```
 
 Internal control
@@ -983,7 +985,7 @@ obj.cd8.bulk <- run_dimred_cluster(
 )
 DimPlot(obj.cd8.bulk, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
 DimPlot(obj.cd8.bulk, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
-saveRDS(obj.cd8.bulk, file.path(datapath, sample, "seurat/cd8_int_bulk.rds"))
+saveRDS(obj.cd8.bulk, file.path(int_dir, "seurat/cd8_int_bulk.rds"))
 ```
 
 ### Bulk (non-naïve)
@@ -1004,7 +1006,7 @@ obj.cd8.bulk.nn <- run_dimred_cluster(
 )
 DimPlot(obj.cd8.bulk.nn, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
 DimPlot(obj.cd8.bulk.nn, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
-saveRDS(obj.cd8.bulk.nn, file.path(datapath, sample, "seurat/cd8_int_bulk_nn.rds"))
+saveRDS(obj.cd8.bulk.nn, file.path(int_dir, "seurat/cd8_int_bulk_nn.rds"))
 ```
 
 ## CD4+
@@ -1053,7 +1055,7 @@ obj.cd4.list <- lapply(obj.cd4.list, function(x) {FindVariableFeatures.STACAS(x,
 varfeat <- SelectIntegrationFeatures(object.list = obj.cd4.list, nfeatures = 1500)
 var_projecTILs <- list()
 for (i in c('CD4T', 'CD8T')) {
-  ref.use <- load.reference.map(ref = paste0("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/refs/projecTILs/", i, "_human_ref_v1.rds"))
+  ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", paste0(i, "_human_ref_v1.rds")))
   var_projecTILs[[i]] <- row.names(ref.use@assays$integrated)
 }
 varfeat <- unique(c(varfeat, var_projecTILs$CD4T))
@@ -1112,5 +1114,5 @@ obj.cd4.int <- run_dimred_cluster(
 )
 DimPlot(obj.cd4.int, reduction = "umap", group.by = "functional.cluster", label = F, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
 DimPlot(obj.cd4.int, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = F, label.size = 5) + theme(aspect.ratio = 1)
-saveRDS(obj.cd4.int, file.path(datapath, sample, "seurat/cd4_int.rds"))
+saveRDS(obj.cd4.int, file.path(int_dir, "seurat/cd4_int.rds"))
 ```

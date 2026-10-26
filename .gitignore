@@ -1,6 +1,7 @@
 # Whitelist: ignore everything, then re-include what is tracked
 /*
 !/.gitignore
+!/README.md
 
 # Analysis code
 !/scripts/

@@ -12,6 +12,7 @@ setup_dir <- normalizePath("../setup", mustWork = TRUE)
 source(file.path(setup_dir, "setup.R"))
 plots_list <- list()
 sample <- "vhio136"
+batch_dir <- file.path(datapath, sample, "vhio")
 ```
 
 # load
@@ -54,8 +55,8 @@ for (i in seq_along(object_files)) {
   soupX_VH[[as.character(object_files[i])]] <- sc
   rm(toc, toc_seurat, tod, sc, meta, umap, soup, i)
 }
-dir.create(file.path(datapath, sample, "seurat"), recursive = TRUE, showWarnings = FALSE)
-saveRDS(soupX_VH, file.path(datapath, sample, "seurat", "soupX_vhio.rds"))
+dir.create(file.path(batch_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
+saveRDS(soupX_VH, file.path(batch_dir, "seurat", "soupX_vhio.rds"))
 rm(object_files, object_tags)
 ```
 
@@ -298,7 +299,7 @@ mito_plots_filter <- ggplot(object@meta.data, aes(x = log(percent.mt), y = log(p
   ) +
   scale_shape_manual(values = c("yes" = 21, "no" = 3)) +
   ggtitle("IC05")
-plots_list[["IC05_qc_mt_vs_tcr.pdf"]] <- mito_plots_filter
+plots_list[["IC05_qc_mt_vs_tcr"]] <- mito_plots_filter
 print(plots_list$IC05_qc_mt_vs_tcr.pdf)
 rm(mito_plots_filter)
 ```
@@ -394,7 +395,7 @@ mito_plots_filter <- ggplot(object@meta.data, aes(x = log(percent.mt), y = log(p
   ) +
   scale_shape_manual(values = c("yes" = 21, "no" = 3)) +
   ggtitle("IC05")
-plots_list[["IC05_qc_mt_vs_tcr_filt.pdf"]] <- mito_plots_filter
+plots_list[["IC05_qc_mt_vs_tcr_filt"]] <- mito_plots_filter
 print(wrap_plots(plots_list$IC05_qc_mt_vs_tcr.pdf, plots_list$IC05_qc_mt_vs_tcr_filt.pdf, ncol = 2))
 rm(mito_plots_filter)
 ```
@@ -797,8 +798,8 @@ object_SCT$ind.method <- ifelse(object_SCT$CD8ind == TRUE & object_SCT$CD4ind ==
 object_SCT$clust.method <- ifelse(object_SCT$CD8indbyclust == TRUE & object_SCT$CD4indbyclust == FALSE, "cd8",
                                     ifelse(object_SCT$CD8indbyclust == FALSE & object_SCT$CD4indbyclust == TRUE, "cd4",
                                            "unknown"))
-write.csv(rt1, file.path(datapath, sample, "seurat/rt1_vhio.csv"))
-write.csv(rt2, file.path(datapath, sample, "seurat/rt2_vhio.csv"))
+write.csv(rt1, file.path(batch_dir, "seurat/rt1_vhio.csv"))
+write.csv(rt2, file.path(batch_dir, "seurat/rt2_vhio.csv"))
 object_SCT$CD8ind <- NULL
 object_SCT$CD4ind <- NULL
 object_SCT$CD8indbyclust <- NULL
@@ -827,7 +828,7 @@ rm(t, g1, g2, thresholdCD4, thresholdCD8)
 scGate: <https://github.com/carmonalab/scGate>
 
 ```{r, warning=FALSE}
-scGate_models_DB <- get_scGateDB()
+scGate_models_DB <- get_scGateDB(version = "v0.17")  # pinned: identical to master as of 2026-10
 models.pbmc <- scGate_models_DB$human$PBMC
 object_SCT <- scGate(object_SCT, assay = "SCT", model = models.pbmc)
 object_SCT$scGate_multi <- ifelse(is.na(object_SCT$scGate_multi), "unknown", object_SCT$scGate_multi)
@@ -888,19 +889,22 @@ NA
 # checkpoint.
 
 ```{r}
-saveRDS(object_SCT, file.path(datapath, sample, "seurat/SCT_vhio.rds"))
+saveRDS(object_SCT, file.path(batch_dir, "seurat/SCT_vhio.rds"))
 ```
 
 Save plots.
 
 ```{r, warning=FALSE}
-folder <- "plots"
-batch <- "vhio"
-dir.create(file.path(datapath, sample, folder, batch), recursive = TRUE, showWarnings = FALSE)
+plot_dir <- file.path(batch_dir, "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 for (i in names(plots_list)) {
-  pdf(file = file.path(datapath, sample, folder, batch, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)
+  pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)
   print(plots_list[[i]])
   dev.off()
 }
-rm(folder, batch)
+rm(plot_dir)
+```
+
+```{r, warning=FALSE}
+print("Plots saved successfully.")
 ```

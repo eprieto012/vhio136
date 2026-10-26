@@ -847,7 +847,7 @@
     "Deriv": {
       "Package": "Deriv",
       "Version": "4.2.0",
-      "Source": "Local",
+      "Source": "Repository",
       "Type": "Package",
       "Title": "Symbolic Differentiation",
       "Date": "2025-06-20",
@@ -866,9 +866,7 @@
       "NeedsCompilation": "no",
       "Author": "Andrew Clausen [aut], Serguei Sokol [aut, cre] (ORCID: <https://orcid.org/0000-0002-5674-3327>), Andreas Rappold [ctb]",
       "Maintainer": "Serguei Sokol <sokol@insa-toulouse.fr>",
-      "Repository": "CRAN",
-      "RemoteType": "local",
-      "RemoteUrl": "/tmp/Rtmp0bleJf/file3e9ebe7a660f63.tar.gz"
+      "Repository": "CRAN"
     },
     "ExperimentHub": {
       "Package": "ExperimentHub",
@@ -2577,7 +2575,7 @@
     "STACAS": {
       "Package": "STACAS",
       "Version": "2.4.1",
-      "Source": "Repository",
+      "Source": "GitHub",
       "Type": "Package",
       "Title": "STACAS: Sub-Type Anchoring Correction for Alignment in Seurat",
       "Authors@R": "c( person(given = 'Massimo', family = 'Andreatta', email = 'massimo.andreatta@unil.ch', role = c('aut','cre'), comment = c(ORCID = '0000-0002-8036-2647')), person(given = 'Ariel', family = 'Berenstein', email = 'arieljberenstein@gmail.com', role = c('aut'), comment = c(ORCID = '0000-0001-8540-5389')), person(given = 'Josep', family = 'Garnica', email = 'Josep.Garnicacaparros@unige.ch', role = c('aut'), comment = c(ORCID = '0000-0001-9493-1321')), person(given = 'Santiago', family = 'Carmona', email = 'santiago.carmona@unil.ch', role = c('aut'), comment = c(ORCID = '0000-0002-2495-0671')) )",
@@ -2609,13 +2607,15 @@
       "RoxygenNote": "7.3.2",
       "Config/testthat/edition": "3",
       "Config/pak/sysreqs": "cmake libglpk-dev make libicu-dev libpng-dev libuv1-dev libxml2-dev libssl-dev python3 zlib1g-dev",
-      "Repository": "https://carmonalab.r-universe.dev",
-      "RemoteUrl": "https://github.com/carmonalab/STACAS",
-      "RemoteRef": "HEAD",
+      "RemoteRef": "ea34e824e17df6316823db0a9b6322af0833e501",
       "RemoteSha": "ea34e824e17df6316823db0a9b6322af0833e501",
       "NeedsCompilation": "no",
       "Author": "Massimo Andreatta [aut, cre] (ORCID: <https://orcid.org/0000-0002-8036-2647>), Ariel Berenstein [aut] (ORCID: <https://orcid.org/0000-0001-8540-5389>), Josep Garnica [aut] (ORCID: <https://orcid.org/0000-0001-9493-1321>), Santiago Carmona [aut] (ORCID: <https://orcid.org/0000-0002-2495-0671>)",
-      "Maintainer": "Massimo Andreatta <massimo.andreatta@unil.ch>"
+      "Maintainer": "Massimo Andreatta <massimo.andreatta@unil.ch>",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteUsername": "carmonalab",
+      "RemoteRepo": "STACAS"
     },
     "ScaledMatrix": {
       "Package": "ScaledMatrix",

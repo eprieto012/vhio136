@@ -10,18 +10,16 @@ output: html_document
 Functions and parameters
 
 ```{r setup, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
-memory.limit(size = 8000)
-options(future.globals.maxSize = 10*1024^3)
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/libraries.R")
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/colors.R")
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/functions.R")
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+source(file.path(setup_dir, "setup.R"), local = TRUE)
+sample <- "vhio136"
+int_dir <- file.path(datapath, sample, "integrated")
 
-plot_dir <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/RIO136/plots/manuscript_latest"
+plot_dir <- file.path(int_dir, "plots", "manuscript")
 if (!dir.exists(plot_dir)) {
   dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
 }
-annot_dir <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/RIO136/outs/traj"
+annot_dir <- file.path(int_dir, "traj")
 if (!dir.exists(annot_dir)) {
   dir.create(annot_dir, showWarnings = FALSE, recursive = TRUE)
 }
@@ -30,7 +28,7 @@ if (!dir.exists(annot_dir)) {
 Tumor-reactive TCR colors
 
 ```{r}
-out_dir <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/RIO136/outs"
+out_dir <- file.path(datapath_load, "outs")
 shape_pool <- c(0, 1, 2, 5, 6, 7, 3, 4, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23, 24, 25)
 colors_tcr_tbl <- read.table(
   file.path(out_dir, "color_TCR.IDs.txt"),
@@ -54,7 +52,7 @@ if (length(tcr_ids) > length(shape_pool)) {
 }
 shape_map <- setNames(shape_pool[seq_along(tcr_ids)], tcr_ids)
 tcr_lib <- read.table(
-  file.path("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/libraries/final/RIO136/tcr_lib.txt"),
+  file.path(datapath_load, "outs", "tcr_lib.txt"),
   col.names = c("TCRb", "TCR.ID"),
   stringsAsFactors = FALSE
 ) %>%
@@ -91,10 +89,9 @@ tcr_emergence_map <- true_hits %>%
 ## Load data.
 
 ```{r, warning=FALSE}
-sample <- "RIO136"
+sample <- "vhio136"
 compartment <- "cd8_int_nn"
-datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
-obj <- readRDS(file.path(datapath, sample, "seurat", paste0(compartment, ".rds")))
+obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds")))
 obj@meta.data$time <- factor(obj@meta.data$time, levels = c("pre", "post1", "post2", "post6"))
 plots_list <- list()
 
@@ -918,7 +915,7 @@ print(p)
 Longitudinal CDR-3β repertoires of tumor-reactive PBLs
 
 ```{r}
-path <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/bulk/tools/ibilbide/analyses/360RIO/results/RIO136/pbl_raw_RIO136.tsv"
+path <- file.path(datapath_load, "outs", "pbl_raw_RIO136.tsv")
 data_raw <- read.table(path, sep = "\t", header = TRUE) %>%
   dplyr::mutate(
     TRBV = stringr::str_extract(nucleotide, "TCRBV[0-9]+-0?[0-9]"),
@@ -1989,10 +1986,9 @@ print(p)
 ## Load data.
 
 ```{r, warning=FALSE}
-sample <- "RIO136"
+sample <- "vhio136"
 compartment <- "cd8_int"
-datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
-obj <- readRDS(file.path(datapath, sample, "seurat", paste0(compartment, ".rds")))
+obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds")))
 obj@meta.data$time <- factor(obj@meta.data$time, levels = c("pre", "post1", "post2", "post6"))
 plots_list <- list()
 
@@ -2161,10 +2157,9 @@ print(p)
 ## Load data.
 
 ```{r, warning=FALSE}
-sample <- "RIO136"
+sample <- "vhio136"
 compartment <- "cd4_int"
-datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
-obj <- readRDS(file.path(datapath, sample, "seurat", paste0(compartment, ".rds")))
+obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds")))
 obj@meta.data$time <- factor(obj@meta.data$time, levels = c("pre", "post1", "post2", "post6"))
 plots_list <- list()
 

@@ -8,21 +8,17 @@ output: html_document
 Set up.
 
 ```{r setup, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
-memory.limit(size = 16000)
-options(future.globals.maxSize = 10*1024^3)
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/libraries.R")
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/colors.R")
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/RIO136/GitHub_v3/setup/functions.R")
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+source(file.path(setup_dir, "setup.R"), local = TRUE)
 ```
 
 # Load data.
 
 ```{r, warning=FALSE}
-sample <- "RIO136"
+sample <- "vhio136"
+int_dir <- file.path(datapath, sample, "integrated")
 compartment <- "cd8_int_nn"
-datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
-obj <- readRDS(file.path(datapath, sample, "seurat", paste0(compartment, ".rds"))) %>%
+obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds"))) %>%
   JoinLayers(assay = "RNA") %>%
   NormalizeData(assay = "RNA", layer = "counts")
 required_metadata <- c("reactivity", "manual.annotation", "time")
@@ -223,11 +219,11 @@ Checkpoint.
 
 ```{r, warning=FALSE}
 # signatures
-dir.create(file.path(datapath, sample, "markers", compartment))
-saveRDS(gene_sets, file.path(datapath, sample, "markers", compartment, "itag_signatures.rds"))
+dir.create(file.path(int_dir, "markers", compartment), recursive = TRUE, showWarnings = FALSE)
+saveRDS(gene_sets, file.path(int_dir, "markers", compartment, "itag_signatures.rds"))
 # gene_sets
 for(name in names(gene_sets)) {
-  file_path <- file.path(datapath, sample, "markers", compartment, paste0(name, ".txt"))
+  file_path <- file.path(int_dir, "markers", compartment, paste0(name, ".txt"))
   write.table(
     gene_sets[[name]],
     file = file_path,
@@ -237,9 +233,9 @@ for(name in names(gene_sets)) {
   )
 }
 # plots
-dir.create(file.path(datapath, sample, "markers", compartment, "plots", "genes"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(int_dir, "markers", compartment, "plots", "genes"), recursive = TRUE, showWarnings = FALSE)
 for (i in names(iTAG_signature_plots)) {
-  pdf(file = file.path(datapath, sample, "markers", compartment, "plots", "genes", paste0(i, ".pdf")),
+  pdf(file = file.path(int_dir, "markers", compartment, "plots", "genes", paste0(i, ".pdf")),
       width = 297 / 25.4, height = 210 / 25.4)
   print(iTAG_signature_plots[[i]])
   dev.off()
@@ -316,13 +312,13 @@ plots_list[["Signatures_iTAG"]] <- p
 Add TRTPBL signature to the dataset (https://doi.org/10.1038/s41467-026-69680-x)
 
 ```{r}
-signatures <- fread("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/refs/signatures.tsv", header = TRUE)
+signatures <- fread(file.path(datapath_load, "outs", "signatures.tsv"), header = TRUE)
 sigs <- lapply(signatures, function(x) unique(na.omit(x)))
 sigs <- list(TRTPBL = sigs$TRTPBL)
 signature.names <- paste0(names(sigs), "_UCell")
 TRTPBL_signature <- sigs$TRTPBL
 obj <- AddModuleScore_UCell(obj, assay = "SCT", features = sigs, ncores = 8)
-saveRDS(obj, file.path(datapath, sample, "seurat", paste0(compartment, ".rds")))
+saveRDS(obj, file.path(int_dir, "seurat", paste0(compartment, ".rds")))
 rm(sigs, signature.names)
 ```
 
@@ -425,20 +421,19 @@ plots_list[["iTAG_signature_all"]] <- wrap_plots(
 
 # Yossef et al.
 
-The data were downloaded from dbGAP and aligned with Cell Ranger, then processed following standard procedures. /Users/endika.prieto/Library/CloudStorage/OneDrive-VHIO/PBL/Single_Cell/SC_Pipeline/Scripts/Public_Yossef_et_al/M01_Script.Rmd.
+The data were downloaded from dbGAP and aligned with Cell Ranger, then processed following standard procedures (separate Yossef et al. pipeline, M01_Script.Rmd). The resulting object is read from `data/public/int_filt_annot.rds`.
 
 ```{r}
 sample2 <- "public_yossef_et_al"
 compartment2 <- "int_filt_annot"
-datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
-object.yossef <- readRDS(file.path(datapath, sample2, "seurat", paste0(compartment2, ".rds")))
+object.yossef <- readRDS(file.path(datapath_load, "public", paste0(compartment2, ".rds")))
 # Signatures.
 signatures <- c(
-  readRDS(file.path("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/RIO136/markers", compartment, "itag_signatures.rds"))
+  readRDS(file.path(int_dir, "markers", compartment, "itag_signatures.rds"))
 )
 signatures$TRTPBL <- TRTPBL_signature
 object.yossef <- AddModuleScore_UCell(object.yossef, assay = "RNA", features = signatures, w_neg = 0.15, ncores=8)
-saveRDS(object.yossef, file.path(datapath, sample2, "seurat", paste0(compartment2, ".rds")))
+saveRDS(object.yossef, file.path(int_dir, "seurat", paste0(sample2, "_", compartment2, ".rds")))
 ```
 
 Overall performance of the transcriptomic signatures.
@@ -486,7 +481,6 @@ plots_list[["iTAG_signature_on_Yossef_yield"]] <- p
 The number of TCRs captured by iTAG signatures in the Yossef et al. cohort.
 
 ```{r}
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/yossef-et-al/setup/functions.R")
 top_clonotypes <- 100
 signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
 performance_plots <- list()
@@ -506,7 +500,7 @@ plots_list[["iTAG_signature_on_Yossef_capture"]] <- p
 
 Old staff (Ricardo's approach)
 ```{r, warning=FALSE}
-data <- fread("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/manuscript/illustrator/plots/heatmap/genes.csv") %>%
+data <- fread(file.path(datapath_load, "outs", "heatmap_genes.csv")) %>%
   filter(value == 1) %>%
   transmute(
     Gene,
@@ -851,11 +845,7 @@ plots_list[["iTAG_signature_heatmap"]] <- p
 # Save plots.
 
 ```{r}
-plots_dir <- file.path(
-  datapath,
-  sample,
-  "markers/plots"
-)
+plots_dir <- file.path(int_dir, "markers", "plots")
 dir.create(
   plots_dir,
   recursive = TRUE,

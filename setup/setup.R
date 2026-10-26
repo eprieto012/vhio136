@@ -10,7 +10,6 @@ datapath <- results_dir
 if (!dir.exists(datapath_load)) {
   stop("Data directory not found: ", datapath_load)
 }
-dir.create(file.path(results_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
 
 # --- R Markdown options ---
 knitr::opts_chunk$set(echo = FALSE)
@@ -37,7 +36,7 @@ set.seed(SEED)
 # --- Configure Python environment and verify MAGIC availability ---
 library(reticulate)
 reticulate::use_python(
-  "/mnt/bioinfnas/immuno/eprieto/Rmagic/miniforge3/envs/magic_env/bin/python",
+  Sys.getenv("MAGIC_PYTHON", "/mnt/bioinfnas/immuno/eprieto/Rmagic/miniforge3/envs/magic_env/bin/python"),
   required = TRUE
 )
 reticulate::py_config()
