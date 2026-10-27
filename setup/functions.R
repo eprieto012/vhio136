@@ -638,7 +638,7 @@ plot_ROC_curves <- function(object,
       .groups = "drop"
     )
   response_counts <- clonotype_df %>%
-    count(
+    dplyr::count(
       is_reactive,
       name = "n_clonotypes"
     )
@@ -1234,4 +1234,28 @@ quietTCRgenes <- function(sc) {
   unwanted_genes <- grep(pattern = unwanted_genes, x = sc, value = TRUE)
   sc <- sc[!sc %in% unwanted_genes]
   return(sc)
+}
+
+# --- Interactive plot preview (R on a compute node cannot reach the VS Code plot viewer) ---
+# vplot() writes a ggplot/patchwork to a PNG; keep that PNG open in VS Code and it refreshes on each write.
+vplot <- function(p = ggplot2::last_plot(), w = 9, h = 7, dpi = 110,
+                  file = file.path(results_dir, "current_plot.png")) {
+  ggsave(file, p, width = w, height = h, dpi = dpi, bg = "white")
+  invisible(p)
+}
+# auto_vplot() calls vplot() after every console command that prints a new ggplot/patchwork.
+auto_vplot <- function(enable = TRUE, ...) {
+  if ("auto_vplot" %in% getTaskCallbackNames()) removeTaskCallback("auto_vplot")
+  if (!enable) return(invisible(FALSE))
+  last_saved <- NULL
+  addTaskCallback(function(expr, value, ok, visible) {
+    p <- ggplot2::last_plot()
+    if (ok && !is.null(p) && !identical(p, last_saved)) {
+      try(vplot(p, ...), silent = TRUE)
+      last_saved <<- p
+    }
+    TRUE
+  }, name = "auto_vplot")
+  message("Plots will be written to ", file.path(results_dir, "current_plot.png"))
+  invisible(TRUE)
 }

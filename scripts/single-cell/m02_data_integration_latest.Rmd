@@ -141,6 +141,9 @@ format_chosen_ids <- function(x) {
 }
 obj@meta.data$id <- format_chosen_ids(obj@meta.data$id)
 message("A total of ", length(unique(unlist(strsplit(na.omit(obj@meta.data$id), ";", fixed = TRUE)))), " unique tested TCRs have been annotated")
+```
+
+```{r}
 # --- Load TCR library metadata ---
 tcr_lib <- fread(file.path(datapath_load, "outs/tcr_lib_annotated.txt"))
 tcr_lib_dt <- as.data.table(copy(tcr_lib))
@@ -220,8 +223,13 @@ obj@meta.data$reactivity <- vapply(obj@meta.data$id, collapse_tcrlib_reactivity,
 # --- Check reconstructed IDs absent from tcr_lib ---
 missing_reconstructed_ids <- setdiff(reconstructed$id, tcr_lib_dt$id)
 if (length(missing_reconstructed_ids) > 0) {
-  message("These reconstructed IDs are present in obj but absent from tcr_lib: ", paste(missing_reconstructed_ids, collapse = ", "))
+  message("Reconstructed IDs absent from tcr_lib: ", paste(missing_reconstructed_ids, collapse = ", "))
+} else {
+  message("All reconstructed IDs (", paste(reconstructed$id, collapse = ", "), ") are present in tcr_lib")
 }
+```
+
+```{r}
 # --- Internal controls ---
 has_reactivity <- function(x, value) {
   vapply(strsplit(ifelse(is.na(x), "", x), ";", fixed = TRUE), function(z) {
@@ -241,14 +249,11 @@ control.non.reactive.id <- obj@meta.data %>%
   filter(has_reactivity(reactivity, "No")) %>%
   distinct()
 # --- Quick summary ---
-message("Matched reconstructed cells: ", sum(grepl("#15|#25|#34|#45", obj@meta.data$id)))
+message("Matched reconstructed cells: ", sum(grepl(paste(reconstructed$id, collapse = "|"), obj@meta.data$id)))
 message("Reactive cells: ", nrow(obj@meta.data[has_reactivity(obj@meta.data$reactivity, "Yes"), ]))
 message("Auto-reactive cells: ", nrow(obj@meta.data[has_reactivity(obj@meta.data$reactivity, "Auto-reactive"), ]))
 message("Non-reactive cells: ", nrow(obj@meta.data[has_reactivity(obj@meta.data$reactivity, "No"), ]))
 # --- Final metadata cleanup ---
-obj@meta.data <- obj@meta.data %>%
-  dplyr::select(-dplyr::any_of(c("id", "tag_combination_controls"))) %>%
-  as.data.frame()
 obj@meta.data <- obj@meta.data %>%
   dplyr::select(
     -dplyr::any_of(c("id", "tag_combination_controls")),
@@ -263,33 +268,19 @@ rownames(obj@meta.data) <- Cells(obj)
 Annotate T-cell functional states by mapping cells to the ProjecTILs human reference atlas: <https://github.com/carmonalab/ProjecTILs>
 
 ```{r}
-# --- Download ProjecTILs human reference maps (first run only) ---
+# --- ProjecTILs human reference maps (already downloaded in setup/refs) ---
 ref_dir <- file.path(project_dir, "setup", "refs")
-dir.create(ref_dir, recursive = TRUE, showWarnings = FALSE)
 ref_cd4 <- file.path(ref_dir, "CD4T_human_ref_v1.rds")
 ref_cd8 <- file.path(ref_dir, "CD8T_human_ref_v1.rds")
-options(timeout = 1800)
-if (!file.exists(ref_cd4)) {
-  download.file(
-    "https://api.figshare.com/v2/file/download/39012395",
-    destfile = ref_cd4,
-    method = "libcurl",
-    mode = "wb"
-  )
-}
-if (!file.exists(ref_cd8)) {
-  download.file(
-    "https://api.figshare.com/v2/file/download/41414556",
-    destfile = ref_cd8,
-    method = "libcurl",
-    mode = "wb"
-  )
+missing_refs <- c(ref_cd4, ref_cd8)[!file.exists(c(ref_cd4, ref_cd8))]
+if (length(missing_refs) > 0) {
+  stop("Missing ProjecTILs reference maps: ", paste(missing_refs, collapse = ", "))
 }
 ```
 
 ```{r}
 # --- CD4+ T cells ---
-ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", "CD4T_human_ref_v1.rds"))
+ref.use <- load.reference.map(ref = ref_cd4)
 levels(factor(ref.use$functional.cluster))
 cd4_cells <- subset(obj, subset = celltype == "cd4")
 set.seed(SEED)
@@ -298,7 +289,7 @@ cd4_cells <- cellstate.predict(ref = ref.use, query = cd4_cells)
 cd4_cells <- cd4_cells@meta.data
 cd4_cells <- subset(cd4_cells, select = c("functional.cluster", "functional.cluster.conf"))
 # --- CD8+ T cells ---
-ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", "CD8T_human_ref_v1.rds"))
+ref.use <- load.reference.map(ref = ref_cd8)
 levels(factor(ref.use$functional.cluster))
 cd8_cells <- subset(obj, subset = celltype == "cd8")
 set.seed(SEED)
@@ -657,7 +648,8 @@ for (i in phenotype) {
       theme(aspect.ratio = 1)
     med_plots[[i]] <- plot_i
 }
-wrap_plots(med_plots, ncol = 4)
+plots_list[["IC01_cd8_confidence_density"]] <- wrap_plots(med_plots, ncol = 4)
+print(plots_list$IC01_cd8_confidence_density)
 ```
 
 Step 2. Reassign annotations based on their confidence score. All cells below the median were marked as 'unknown' for STACAS integration.
@@ -738,8 +730,11 @@ obj.cd8.int <- run_dimred_cluster(
   k_param = 30,
   reduction_name = "umap"
 )
-DimPlot(obj.cd8.int, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
-DimPlot(obj.cd8.int, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+g1 <- DimPlot(obj.cd8.int, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
+g2 <- DimPlot(obj.cd8.int, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+plots_list[["IC02_cd8_int_umap"]] <- wrap_plots(g1, g2, ncol = 2)
+print(plots_list$IC02_cd8_int_umap)
+rm(g1, g2)
 saveRDS(obj.cd8.int, file.path(int_dir, "seurat/cd8_int.rds"))
 ```
 
@@ -759,8 +754,11 @@ obj.cd8.nn <- run_dimred_cluster(
   k_param = 30,
   reduction_name = "umap"
 )
-DimPlot(obj.cd8.nn, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
-DimPlot(obj.cd8.nn, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+g1 <- DimPlot(obj.cd8.nn, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
+g2 <- DimPlot(obj.cd8.nn, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+plots_list[["IC03_cd8_int_nn_umap"]] <- wrap_plots(g1, g2, ncol = 2)
+print(plots_list$IC03_cd8_int_nn_umap)
+rm(g1, g2)
 ```
 
 #### Manual annotations
@@ -838,18 +836,19 @@ CD8 activated TCM-like = recently activated central-memory-like cells; still low
 CD8 activated TEM = activated effector-memory cells; intermediate cytotoxicity; GZMK/GZMA with HLA-II activation signature.
 CD8 TEMRA FGFBP2+ = highly cytotoxic terminal effector/TEMRA cells; strong FGFBP2/GZMB/GZMH/GNLY/PRF1/KLRD1/TBX21 program.
 CD8 TEMRA LILRB1+ = terminal cytotoxic TEMRA-like cells with inhibitory/NK-like features; LILRB1/FCGR3A/ADGRG1/ZEB2 with GNLY/GZMB.
+CD8 TEMRA KLRG1+ = terminal cytotoxic TEMRA-like cells with senescence/NK-like features; KLRG1/GZMB/GNLY with inhibitory receptors.
 Proliferating CD8 T cells = cycling activated CD8 cells; proliferation-dominant rather than purely cytotoxic; MKI67/PCLAF/STMN1/MCM/NUSAP1-high.
 
 ```{r}
 obj.cd8.nn$manual.annotation <- dplyr::recode(
   as.character(obj.cd8.nn$STACAS_snn_res.0.5),
-  "0" = "CD8 TEMRA FGFBP2+",
-  "1" = "CD8 activated TEM",
-  "2" = "CD8 TCM",
-  "3" = "CD8 activated TCM-like",
+  "0" = "CD8 activated TEM GZMK+",
+  "1" = "CD8 TCM",
+  "2" = "CD8 TEMRA FGFBP2+",
+  "3" = "CD8 TEMRA LILRB1+",
   "4" = "CD8 proliferating",
-  "5" = "CD8 TEMRA KLRG1+",
-  "6" = "CD8 TEMRA LILRB1+",
+  "5" = "CD8 activated TCM-like",
+  "6" = "CD8 LEF1+ ZNF683+",
   .default = NA_character_
 )
 obj.cd8.nn$manual.annotation <- factor(
@@ -857,8 +856,8 @@ obj.cd8.nn$manual.annotation <- factor(
   levels = c(
     "CD8 TCM",
     "CD8 activated TCM-like",
-    "CD8 activated TEM",
-    "CD8 TEMRA KLRG1+",
+    "CD8 activated TEM GZMK+",
+    "CD8 LEF1+ ZNF683+",
     "CD8 TEMRA FGFBP2+",
     "CD8 TEMRA LILRB1+",
     "CD8 proliferating"
@@ -867,13 +866,13 @@ obj.cd8.nn$manual.annotation <- factor(
 manual_colors <- c(
   "CD8 TCM"                = "#0B6F61",
   "CD8 activated TCM-like" = "#84D8C5",
-  "CD8 activated TEM"      = "#E45C95",
-  "CD8 TEMRA KLRG1+"       = "#00A6D6",
+  "CD8 activated TEM GZMK+" = "#E45C95",
+  "CD8 LEF1+ ZNF683+"      = "#B08BCE",
   "CD8 TEMRA FGFBP2+"      = "#123FD1",
   "CD8 TEMRA LILRB1+"      = "#78B7F9",
   "CD8 proliferating"      = "#4B1D73"
 )
-DimPlot(
+plots_list[["IC04_cd8_int_nn_manual_annotation"]] <- DimPlot(
   obj.cd8.nn,
   reduction = "umap",
   group.by = "manual.annotation",
@@ -883,6 +882,7 @@ DimPlot(
   pt.size = 0.1,
   cols = manual_colors
 ) + theme(aspect.ratio = 1)
+print(plots_list$IC04_cd8_int_nn_manual_annotation)
 
 # --- Save with the manual annotations ---
 saveRDS(obj.cd8.nn, file.path(int_dir, "seurat/cd8_int_nn.rds"))
@@ -964,7 +964,9 @@ p_frequent <- make_criteria_plot_by_time(
   label = "Frequent",
   color = criteria_colors["Frequent"]
 )
-p_expanding / p_pd1 / p_tumor / p_frequent
+plots_list[["IC05_cd8_int_nn_criteria"]] <- p_expanding / p_pd1 / p_tumor / p_frequent
+print(plots_list$IC05_cd8_int_nn_criteria)
+rm(p_expanding, p_pd1, p_tumor, p_frequent)
 ```
 
 ### Bulk
@@ -983,8 +985,11 @@ obj.cd8.bulk <- run_dimred_cluster(
   k_param = 30,
   reduction_name = "umap"
 )
-DimPlot(obj.cd8.bulk, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
-DimPlot(obj.cd8.bulk, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+g1 <- DimPlot(obj.cd8.bulk, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
+g2 <- DimPlot(obj.cd8.bulk, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+plots_list[["IC06_cd8_bulk_umap"]] <- wrap_plots(g1, g2, ncol = 2)
+print(plots_list$IC06_cd8_bulk_umap)
+rm(g1, g2)
 saveRDS(obj.cd8.bulk, file.path(int_dir, "seurat/cd8_int_bulk.rds"))
 ```
 
@@ -1004,8 +1009,11 @@ obj.cd8.bulk.nn <- run_dimred_cluster(
   k_param = 30,
   reduction_name = "umap"
 )
-DimPlot(obj.cd8.bulk.nn, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
-DimPlot(obj.cd8.bulk.nn, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+g1 <- DimPlot(obj.cd8.bulk.nn, reduction = "umap", group.by = "functional.cluster", label = T, repel = T, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
+g2 <- DimPlot(obj.cd8.bulk.nn, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = T, repel = T, label.size = 5) + theme(aspect.ratio = 1)
+plots_list[["IC07_cd8_bulk_nn_umap"]] <- wrap_plots(g1, g2, ncol = 2)
+print(plots_list$IC07_cd8_bulk_nn_umap)
+rm(g1, g2)
 saveRDS(obj.cd8.bulk.nn, file.path(int_dir, "seurat/cd8_int_bulk_nn.rds"))
 ```
 
@@ -1032,7 +1040,8 @@ for (i in phenotype) {
       theme(aspect.ratio = 1)
     med_plots[[i]] <- plot_i
 }
-wrap_plots(med_plots, ncol = 4)
+plots_list[["IC08_cd4_confidence_density"]] <- wrap_plots(med_plots, ncol = 4)
+print(plots_list$IC08_cd4_confidence_density)
 ```
 
 Step 2. Reassign annotations based on their confidence score. All cells below the median were marked as 'unknown' for STACAS integration.
@@ -1112,7 +1121,27 @@ obj.cd4.int <- run_dimred_cluster(
   k_param = 30,
   reduction_name = "umap"
 )
-DimPlot(obj.cd4.int, reduction = "umap", group.by = "functional.cluster", label = F, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
-DimPlot(obj.cd4.int, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = F, label.size = 5) + theme(aspect.ratio = 1)
+g1 <- DimPlot(obj.cd4.int, reduction = "umap", group.by = "functional.cluster", label = F, label.size = 5, cols = phenotype_colors) + theme(aspect.ratio = 1)
+g2 <- DimPlot(obj.cd4.int, reduction = "umap", group.by = paste0("STACAS_snn_res.", res), label = F, label.size = 5) + theme(aspect.ratio = 1)
+plots_list[["IC09_cd4_int_umap"]] <- wrap_plots(g1, g2, ncol = 2)
+print(plots_list$IC09_cd4_int_umap)
+rm(g1, g2)
 saveRDS(obj.cd4.int, file.path(int_dir, "seurat/cd4_int.rds"))
+```
+
+Save plots.
+
+```{r, warning=FALSE}
+plot_dir <- file.path(int_dir, "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+for (i in names(plots_list)) {
+  pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)
+  print(plots_list[[i]])
+  dev.off()
+}
+rm(plot_dir)
+```
+
+```{r, warning=FALSE}
+print("Plots saved successfully.")
 ```

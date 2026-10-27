@@ -1,0 +1,1920 @@
+---
+title: "Synthetic TCR library screening reveals tumor-reactive T cell dynamics in peripheral blood during checkpoint blockade"
+author: "Endika Prieto-Fernández"
+date: "2026-07-01"
+output: html_document
+---
+
+# setup
+
+```{r, message=FALSE, warning=FALSE}
+
+suppressPackageStartupMessages({
+  library(data.table)
+  library(ggplot2)
+  library(patchwork)
+  library(purrr)
+  library(readr)
+  library(scales)
+  library(stringr)
+  library(tibble)
+  library(tidyr)
+  library(dplyr)
+})
+
+if (!file.exists("functions.R")) {
+  stop("Missing required file: functions.R")
+}
+
+source("functions.R")
+
+# Reattach dplyr after sourcing project functions to avoid masked verbs.
+suppressPackageStartupMessages(
+  library(dplyr)
+)
+
+if (file.exists("colors.R")) {
+  source("colors.R")
+}
+
+if (!exists("criteria_colors")) {
+  criteria_colors <- c(
+    "Frequent" = "#9ECAE1",
+    "Expanding" = "#F16913",
+    "Tumor" = "#CB181D",
+    "PD1" = "#6A51A3",
+    "Tumor | Frequent" = "#FB6A4A",
+    "Tumor | Expanding" = "#A63603",
+    "PD1 | Frequent" = "#9E9AC8",
+    "PD1 | Expanding" = "#C51B8A",
+    "PD1 | Tumor" = "#54278F",
+    "PD1 | Tumor | Frequent" = "#756BB1",
+    "PD1 | Tumor | Expanding" = "#3F007D",
+    "Non tested" = "gray80",
+    "Not found" = "gray60",
+    "None" = "gray20"
+  )
+}
+
+required_functions <- c(
+  "load_data",
+  "load_data_biopsy",
+  "plot_pbl_tumor_overlap_panel",
+  "summarise_overlap_ci_by_time",
+  "summarise_high_freq_overlapping_clones",
+  "plot_top_trajectories",
+  "plot_newly_detected_trajectories",
+  "get_newly_detected_fc_all",
+  "apply_newly_detected_fc_cutoff",
+  "plot_newly_detected_fc_rank_cutoff",
+  "plot_non_neutral_rankplot_zoom",
+  "plot_expanded_trajectories",
+  "make_sc_trb_long",
+  "collapse_uniq",
+  "get_sc_reference_fc_rank",
+  "plot_sc_clonotype_fc_rank",
+  "plot_sc_clonotype_fc_rank_tcrlib_criteria",
+  "tcr_timepoint_levels",
+  "tcr_timepoint_days",
+  "tcr_y_scale_log",
+  "tcr_theme_trajectory",
+  "plot_tested_tcr_trajectories"
+)
+
+missing_functions <- required_functions[
+  !vapply(
+    required_functions,
+    exists,
+    logical(1),
+    mode = "function"
+  )
+]
+
+if (length(missing_functions) > 0) {
+  stop(
+    "The following required functions are missing from functions.R: ",
+    paste(missing_functions, collapse = ", ")
+  )
+}
+
+plots_list <- list()
+
+```
+
+# data
+
+```{r, warning=FALSE}
+
+# --- PBL data ---
+load_data(samples = "RIO136",
+          datapath.pbl = "/Volumes/datos_lab/tcrb/data_blood/patients",
+          output.list.name = "pbl",
+          technology = "adaptive",
+          min_freq = 1e-3
+          )
+
+# --- Biopsy data ---
+load_data_biopsy(samples = c("RIO136"),
+                 datapath.biopsy = "/Volumes/datos_lab/tcrb/data_tumor",
+                 output.list.name = "biopsy",
+                 min_freq = 1e-3
+                 )
+
+```
+
+# figs. 1b,c
+
+Overlap between PBL d0 and tumor CDR3β clonotypes, with peripheral trajectories of overlapping clonotypes.
+
+```{r}
+
+pbl_tumor_overlap <- plot_pbl_tumor_overlap_panel(pbl_patient = pbl$RIO136,
+                                            biopsy_patient = biopsy$RIO136$`p136-Tfrozen_TCRB in frame`,
+                                            pbl_time = 0,
+                                            clonotype_by = "aminoAcid",
+                                            top_n = 30,
+                                            floor_y = 1e-3,
+                                            min_count_pbl = 1,
+                                            min_count_tumor = 1)
+
+plots_list[["traj_pbl_til"]] <- pbl_tumor_overlap$plot
+
+```
+
+Internal control.
+
+```{r}
+
+# --- Mean frequencies (95% CI) ---
+overlap_ci_all <- summarise_overlap_ci_by_time(patient_list = pbl$RIO136,
+                                               overlap_result = pbl_tumor_overlap$overlap,
+                                               clonotype_by = "aminoAcid",
+                                               top_n = NULL,
+                                               include_zeros = TRUE)
+min(overlap_ci_all$ci95_low)
+max(overlap_ci_all$ci95_high)
+
+# --- CDR3B clonotypes passing 0.1% frequency threshold and their max values ---
+high_overlap <- summarise_high_freq_overlapping_clones(patient_list = pbl$RIO136,
+                                                       overlap_result = pbl_tumor_overlap$overlap,
+                                                       clonotype_by = "aminoAcid",
+                                                       threshold = 0.1)
+high_overlap$summary
+high_overlap$clones
+
+```
+
+# fig. 1d
+
+Top-30 peripheral CDR3β trajectories across time points.
+
+```{r}
+
+traj_plots <- list()
+for (i in names(pbl$RIO136)) {
+  p_top_i <- plot_top_trajectories(pbl$RIO136,
+                                   time = i,
+                                   top_n = 30,
+                                   clonotype_by = "aminoAcid")
+  if (!is.null(p_top_i)) {
+    traj_plots[[i]] <- p_top_i
+  }
+}
+plots_list[["traj_pbl_top30"]] <- wrap_plots(traj_plots, ncol = 3)
+
+```
+
+Internal control: Newly detected CDR3β clonotype trajectories across blood timepoints.
+
+```{r}
+
+traj_plots <- list()
+for (i in names(pbl$RIO136)[-1]) {
+  p_new_i <- plot_newly_detected_trajectories(pbl$RIO136,
+                                              target_time = i,
+                                              top_n = 30,
+                                              clonotype_by = "aminoAcid")
+  if (!is.null(p_new_i)) {
+    traj_plots[[i]] <- p_new_i
+  }
+}
+plots_list[["traj_pbl_unseen"]] <- wrap_plots(traj_plots, ncol = 3)
+
+```
+
+# fig. S2a
+
+Fold-change ranking of newly detected CDR3β clonotypes used to define an empirical expansion cutoff.
+
+A criteria is that they were absent in previous time-points.
+
+```{r}
+
+patient <- pbl$RIO136
+clonotype_by <- "aminoAcid"
+floor_y <- 1e-3
+fc_cutoff <- 10
+min_count <- 5
+fc_all <- get_newly_detected_fc_all(
+  patient_list = patient,
+  floor_y = floor_y,
+  clonotype_by = clonotype_by,
+  min_count = min_count
+)
+cut_fc <- apply_newly_detected_fc_cutoff(
+  fc_all = fc_all,
+  fc_cutoff = fc_cutoff,
+  fc_col = "fc_vs_previous_floor"
+)
+
+plots_list[["rank_pbl_non_neutral"]] <- plot_newly_detected_fc_rank_cutoff(
+  cutoff_result = cut_fc,
+  fc_col = "fc_vs_previous_floor",
+  point_size = 0.25,
+  selected_point_size = 2,
+  shape_by_time = FALSE
+)
+
+plots_list[["rank_pbl_non_neutral_zoom"]] <- plot_non_neutral_rankplot_zoom(
+  cutoff_result = cut_fc,
+  fc_col = "fc_vs_previous_floor",
+  point_size = 3
+)
+
+```
+
+# figs. 1e & S2c
+
+Plot expanded newly detected trajectories
+
+```{r}
+
+expanded <- cut_fc$data %>% filter(selected_by_knee)
+traj_expanded_plots <- list()
+
+for (i in names(patient)[-1]) {
+  p_i <- plot_expanded_trajectories(patient,
+                                    target_time = i,
+                                    expanded_data = expanded,
+                                    top_n = NULL,
+                                    floor_y = floor_y,
+                                    clonotype_by = clonotype_by,
+                                    skip_empty = TRUE)
+  if (!is.null(p_i)) {
+    traj_expanded_plots[[i]] <- p_i
+  }
+}
+plots_list[["traj_pbl_non_neutral"]] <- wrap_plots(traj_expanded_plots, ncol = 3)
+
+```
+
+# fig. S4a
+
+## annot
+
+First, annotate each ID on the TCR library based on its selection criteria, i.e., expanded, til, PD1 or frequent. Of note, the TCR library was constructed based on pre and post2 (day 42) samples.
+
+Steps:
+
+Load repertoire combining both TCR-Seq runs.
+
+```{r}
+samples <- c("Rootpath/pre_bulk1",
+             "Rootpath/pre_bulk2",
+             "Rootpath/pre_bulk3",
+             "Rootpath/pre_pd1",
+             "Rootpath/post2_d42_bulk1",
+             "Rootpath/post2_d42_bulk2",
+             "Rootpath/post2_d42_bulk3",
+             "Rootpath/post2_d42_pd1"
+             )
+repertoire <- list()
+for (i in samples) {
+  contig_file <- file.path(
+    "/Volumes/datos_lab/single_cell/RIO136",
+    i,
+    "filtered_contig_annotations.csv"
+  )
+
+  if (!file.exists(contig_file)) {
+    stop("Missing filtered contig annotation file: ", contig_file)
+  }
+
+  contig_data <- data.table::fread(contig_file)
+  required_contig_columns <- c(
+    "barcode",
+    "v_gene",
+    "j_gene",
+    "cdr3",
+    "chain",
+    "productive"
+  )
+  missing_contig_columns <- setdiff(
+    required_contig_columns,
+    colnames(contig_data)
+  )
+
+  if (length(missing_contig_columns) > 0) {
+    stop(
+      "Missing columns in ",
+      contig_file,
+      ": ",
+      paste(missing_contig_columns, collapse = ", ")
+    )
+  }
+
+  data <- contig_data %>%
+    dplyr::filter(productive %in% c(TRUE, "TRUE")) %>%
+    dplyr::select(barcode, v_gene, j_gene, cdr3, chain) %>%
+    dplyr::mutate(
+      chain_order = match(chain, c("TRA", "TRB"))
+    ) %>%
+    dplyr::arrange(barcode, chain_order, chain) %>%
+    dplyr::group_by(barcode) %>%
+    dplyr::summarise(
+      v_gene = paste(v_gene, collapse = ";"),
+      j_gene = paste(j_gene, collapse = ";"),
+      cdr3 = paste(cdr3, collapse = ";"),
+      chain = paste(chain, collapse = ";"),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(sample = gsub("Rootpath/", "", i))
+
+  repertoire[[i]] <- data
+}
+repertoire <- dplyr::bind_rows(repertoire)
+```
+
+Internal control: Number of TCR clonotypes in CD3+ and CD3+PD1hi populations.
+
+```{r}
+
+clonotype_counts_total <- repertoire %>%
+  mutate(
+    source = case_when(
+      str_detect(sample, "bulk") ~ "bulk",
+      str_detect(sample, "pd1") ~ "pd1",
+      TRUE ~ NA_character_
+    ),
+    clonotype = paste(v_gene, j_gene, cdr3, sep = "__")
+  ) %>%
+  filter(!is.na(source)) %>%
+  distinct(source, clonotype) %>%
+  dplyr::count(source, name = "n_distinct_clonotypes")
+clonotype_counts_total
+
+```
+
+
+Define TCR clonotypes & count.
+
+```{r}
+
+repertoire <- repertoire %>% mutate(clonotype = paste(cdr3, v_gene, j_gene, sep = "_"))
+clonotype_counts <- repertoire %>%
+  mutate(
+    timepoint = case_when(
+      str_starts(sample, "pre_") ~ "pre",
+      str_starts(sample, "post2_") ~ "post2",
+      TRUE ~ "other"
+    ),
+    timepoint = factor(timepoint, levels = c("pre", "post2"))
+  ) %>%
+  filter(!is.na(timepoint)) %>%
+  group_by(timepoint, clonotype) %>%
+  summarise(n_cells = n(), .groups = "drop") %>%
+  pivot_wider(
+    names_from = timepoint,
+    values_from = n_cells,
+    values_fill = 0,
+    names_expand = TRUE
+  ) %>%
+  dplyr::rename(full_pre = pre, full_post2 = post2) %>%
+  dplyr::select(clonotype, full_pre, full_post2)
+repertoire <- repertoire %>% left_join(clonotype_counts, by = "clonotype")
+
+```
+
+Summary table with tumor annotations.
+
+```{r}
+
+# --- Define TRB clonotypes & count ---
+# Multi-chain cells such as TRA;TRB;TRB contribute every TRB CDR3B.
+repertoire.trb.long <- make_sc_trb_long(repertoire)
+
+# --- Tumor CDR3B set ---
+tumor_CDR3B <- biopsy$RIO136$`p136-Tfrozen_TCRB in frame` %>%
+  filter(!is.na(aminoAcid), aminoAcid != "NA") %>%
+  pull(aminoAcid) %>%
+  unique()
+
+# --- Single-cell CDR3B table ---
+repertoire.clean <- repertoire.trb.long %>%
+  mutate(
+    compartment = case_when(
+      str_detect(sample, regex("bulk", ignore_case = TRUE)) ~ "Bulk",
+      str_detect(sample, regex("PD1", ignore_case = TRUE)) ~ "PD1",
+      TRUE ~ NA_character_
+    ),
+    tumor = CDR3B %in% tumor_CDR3B
+  ) %>%
+  filter(!is.na(CDR3B), CDR3B != "", !is.na(compartment)) %>%
+  dplyr::select(CDR3B, compartment, tumor) %>%
+  distinct()
+
+```
+
+Add TCR library information.
+
+```{r}
+
+# --- Load the TCR library ---
+tcr_lib_file <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/libraries/final/RIO136/tcr_lib.txt"
+
+if (!file.exists(tcr_lib_file)) {
+  stop("Missing TCR library file: ", tcr_lib_file)
+}
+
+tcr_lib <- data.table::fread(tcr_lib_file, header = FALSE)
+
+if (!all(c("V1", "V2") %in% colnames(tcr_lib))) {
+  stop("The TCR library file must contain at least two columns: V1 and V2")
+}
+
+# --- Add reconstructed TCRs ---
+tcr_lib <- rbind(
+  tcr_lib,
+  data.table::data.table(
+    V1 = c(
+      "CASSLIGASGNTEAFF_TRBV5-1_TRBJ1-1",
+      "CASSLATGASTDTQYF_TRBV7-8_TRBJ2-3",
+      "CASTTGFGNTEAFF_TRBV28_TRBJ1-1",
+      "CAISELGTGNNEQFF_TRBV10-3_TRBJ2-1"
+    ),
+    V2 = c(
+      "ValidationID.15",
+      "ValidationID.25",
+      "ValidationID.34",
+      "ValidationID.45"
+    )
+  ),
+  fill = TRUE
+)
+
+# --- Standardize TCR IDs ---
+tcr_lib <- tcr_lib %>%
+  mutate(
+    V2 = gsub("Chosen", "", V2),
+    V2 = gsub("ValidationID\\.", "#", V2),
+    V2_num = str_extract(V2, "[0-9]+$"),
+    V2_prefix = case_when(
+      grepl("^ID\\.[0-9]+$", V2) ~ "ID.",
+      grepl("^#[0-9]+$", V2) ~ "#",
+      TRUE ~ NA_character_
+    ),
+    V2 = if_else(
+      !is.na(V2_prefix) & !is.na(V2_num),
+      paste0(V2_prefix, sprintf("%03d", as.integer(V2_num))),
+      V2
+    )
+  ) %>%
+  dplyr::select(-V2_num, -V2_prefix)
+
+# --- TCRlib experiment annotation ---
+tcrlib_yes_ids <- sprintf("ID.%03d", c(12, 16, 23, 24, 31, 60, 83, 94, 143, 146, 159, 187, 347, 531, 572, 618, 640))
+tcrlib_autoreactive_ids <- sprintf("ID.%03d", c(195, 214, 232, 295, 440, 445, 525, 684))
+tcrlib_no_ids <- sprintf("ID.%03d", c(484))
+
+# --- Trajectory experiment annotation ---
+traj_yes_ids <- sprintf("ID.%03d", c(145, 185, 746))
+traj_autoreactive_ids <- sprintf("ID.%03d", c(82, 148, 247, 216))
+traj_no_autoreactivity_tested_ids <- c(sprintf("ID.%03d", c(2, 74, 99)), sprintf("#%03d", c(25, 45)))
+traj_no_ids <- c(sprintf("ID.%03d", c(35, 56, 57, 131, 136, 198, 217, 272, 285, 646, 664, 671, 819)), sprintf("#%03d", c(15, 34)))
+traj_ids <- unique(c(traj_yes_ids, traj_autoreactive_ids, traj_no_autoreactivity_tested_ids, traj_no_ids))
+
+# --- Annotate both experiments without overwriting ---
+tcr_lib <- tcr_lib %>%
+  mutate(
+    TCRlib_hit = TRUE,
+    TCRlib_reactivity = case_when(
+      V2 %in% tcrlib_yes_ids ~ "Yes",
+      V2 %in% tcrlib_autoreactive_ids ~ "Auto-reactive",
+      V2 %in% tcrlib_no_ids ~ "No",
+      TRUE ~ NA_character_
+    ),
+    TCRlib_color = case_when(
+      TCRlib_reactivity == "Yes" ~ "red3",
+      TCRlib_reactivity == "Auto-reactive" ~ "black",
+      TCRlib_reactivity == "No" ~ "gray70",
+      TRUE ~ NA_character_
+    ),
+    Traj = V2 %in% traj_ids,
+    Traj_reactivity = case_when(
+      V2 %in% traj_yes_ids ~ "Yes",
+      V2 %in% traj_autoreactive_ids ~ "Auto-reactive",
+      V2 %in% traj_no_autoreactivity_tested_ids ~ "No-autoreactivity-tested",
+      V2 %in% traj_no_ids ~ "No",
+      TRUE ~ NA_character_
+    ),
+    Traj_color = case_when(
+      Traj_reactivity == "Yes" ~ "red3",
+      Traj_reactivity == "Auto-reactive" ~ "black",
+      Traj_reactivity == "No-autoreactivity-tested" ~ "#C2A679",
+      Traj_reactivity == "No" ~ "gray70",
+      TRUE ~ NA_character_
+    )
+  )
+
+# --- Collapse TCR library information by CDR3B and add it to single-cell clonotypes ---
+tcr_lib_CDR3B <- tcr_lib %>%
+  as_tibble() %>%
+  filter(!is.na(V1), V1 != "NA") %>%
+  mutate(CDR3B = str_extract(V1, "^[^_]+")) %>%
+  group_by(CDR3B) %>%
+  summarise(
+    TCRlib_ID = collapse_uniq(V2),
+    TCRlib_hit = any(TCRlib_hit %in% TRUE),
+    TCRlib_reactivity = collapse_uniq(TCRlib_reactivity),
+    TCRlib_color = collapse_uniq(TCRlib_color),
+    Traj = any(Traj %in% TRUE),
+    Traj_reactivity = collapse_uniq(Traj_reactivity),
+    Traj_color = collapse_uniq(Traj_color),
+    .groups = "drop"
+  )
+
+# --- Add TCR library information to single-cell clonotypes ---
+repertoire.clean <- repertoire.clean %>%
+  left_join(tcr_lib_CDR3B, by = "CDR3B") %>%
+  mutate(
+    TCRlib_hit = replace_na(TCRlib_hit, FALSE),
+    Traj = replace_na(Traj, FALSE)
+  )
+
+```
+
+Rank single-cell clonotypes by frequency fold-change (day 42 vs baseline).
+
+```{r}
+
+sc_fc_rank <- get_sc_reference_fc_rank(
+  patient_list = patient,
+  single_cell_clonotypes = repertoire.clean,
+  floor_y = 1e-3,
+  clonotype_by = "aminoAcid",
+  timepoint_0 = "d0",
+  timepoint_42 = "d42"
+)
+
+required_sc_fc_columns <- c(
+  "CDR3B",
+  "FC_abs",
+  "FC_direction",
+  "rank",
+  "log2FC_abs",
+  "timepoint",
+  "freq_in",
+  "reference_freq",
+  "reference_timepoint",
+  "reference_count",
+  "count"
+)
+missing_sc_fc_columns <- setdiff(
+  required_sc_fc_columns,
+  colnames(sc_fc_rank)
+)
+
+if (length(missing_sc_fc_columns) > 0) {
+  stop(
+    "Missing columns in sc_fc_rank: ",
+    paste(missing_sc_fc_columns, collapse = ", ")
+  )
+}
+
+```
+
+Internal control: Check where the tumour-reactive TCRs fall. FC of 10 would capture 8/17 (~50%) of the TCRlib hits.
+
+```{r}
+
+# I tried several cutoff values, but FC10 seems to be the best compromise between sensitivity and specificity.
+fc.value <- 10
+
+p_sc_fc_rank <- plot_sc_clonotype_fc_rank(sc_fc_rank, fc_cutoff = fc.value)
+p_sc_fc_rank
+
+```
+
+Annotate the expanding or contracting clonotypes based on the selected fold-change filter.
+
+```{r}
+
+# --- Filter by fold-change value ---
+expanding_FC <- sc_fc_rank %>%
+  filter(FC_abs >= fc.value, FC_direction %in% c("Expansion", "Contraction")) %>%
+  arrange(desc(FC_abs)) %>%
+  mutate(expanding_FC = TRUE) %>%
+  dplyr::select(
+    CDR3B,
+    expanding_FC,
+    rank,
+    FC_abs,
+    log2FC_abs,
+    FC_direction,
+    timepoint,
+    freq_in,
+    reference_freq,
+    reference_timepoint,
+    tumor,
+    TCRlib_ID,
+    TCRlib_hit,
+    TCRlib_reactivity,
+    TCRlib_color,
+    Traj,
+    Traj_reactivity,
+    Traj_color
+  )
+
+# --- Annotate the repertoire ---
+repertoire.clean <- repertoire.clean %>%
+  mutate(
+    expanding = CDR3B %in% expanding_FC$CDR3B,
+    criteria = paste(
+      compartment,
+      ifelse(tumor %in% TRUE, "Tumor", "No tumor"),
+      ifelse(expanding %in% TRUE, "Expanding", "Non-expanding"),
+      sep = " | "
+    )
+  )
+
+```
+
+Simplified criteria.
+
+```{r}
+
+count_cutoff <- 3
+high_count_baseline_day42_tbl <- sc_fc_rank %>%
+  mutate(
+    max_count_baseline_day42 = pmax(
+      coalesce(reference_count, 0),
+      coalesce(count, 0)
+    )
+  ) %>%
+  filter(max_count_baseline_day42 >= count_cutoff) %>%
+  arrange(desc(max_count_baseline_day42), desc(FC_abs))
+
+repertoire.clean <- repertoire.clean %>%
+  mutate(
+    high_count_baseline_day42 = CDR3B %in% high_count_baseline_day42_tbl$CDR3B,
+    criteria = paste(
+      compartment,
+      ifelse(tumor %in% TRUE, "Tumor", "No tumor"),
+      ifelse(expanding %in% TRUE, "Expanding", "Non-expanding"),
+      ifelse(high_count_baseline_day42 %in% TRUE, "High-count baseline/d42", "Low-count baseline/d42"),
+      sep = " | "
+    ),
+    criteria_simplified = case_when(
+      compartment == "PD1" & tumor %in% TRUE & expanding %in% TRUE ~ "PD1 | Tumor | Expanding",
+      compartment == "PD1" & tumor %in% TRUE ~ "PD1 | Tumor",
+      compartment == "PD1" & expanding %in% TRUE ~ "PD1 | Expanding",
+      tumor %in% TRUE & expanding %in% TRUE ~ "Tumor | Expanding",
+      compartment == "PD1" ~ "PD1",
+      tumor %in% TRUE ~ "Tumor",
+      expanding %in% TRUE ~ "Expanding",
+      high_count_baseline_day42 %in% TRUE ~ "Frequent",
+      TRUE ~ "None"
+    )
+  )
+
+```
+
+Subset the TCRs included in the TCR library
+
+```{r}
+
+# --- Subset the repertoire to TCR library hits ---
+repertoire.clean.sub <- repertoire.clean %>%
+  filter(TCRlib_hit %in% TRUE) %>%
+  arrange(
+    criteria_simplified,
+    CDR3B
+  )
+repertoire.clean.sub.prioritized <- repertoire.clean.sub
+table(repertoire.clean.sub$criteria_simplified)
+
+# --- Internal control ---
+TCRlib_ID_list <- repertoire.clean.sub.prioritized %>%
+  filter(!is.na(TCRlib_ID), TCRlib_ID != "") %>%
+  separate_rows(TCRlib_ID, sep = "\\s*\\|\\s*") %>%
+  mutate(TCRlib_ID = str_trim(TCRlib_ID)) %>%
+  filter(str_detect(TCRlib_ID, "^ID\\.\\d+$")) %>%
+  distinct(TCRlib_ID) %>%
+  arrange(TCRlib_ID) %>%
+  pull(TCRlib_ID)
+message("Total number of TCR library IDs annotated: ", length(TCRlib_ID_list))
+
+```
+
+Return criteria to the library.
+
+```{r}
+
+criteria_by_TCRlib_ID <- repertoire.clean.sub.prioritized %>%
+  dplyr::filter(
+    !is.na(.data$TCRlib_ID),
+    .data$TCRlib_ID != ""
+  ) %>%
+  tidyr::separate_rows(
+    TCRlib_ID,
+    sep = "\\s*\\|\\s*"
+  ) %>%
+  dplyr::mutate(
+    TCRlib_ID = stringr::str_trim(.data$TCRlib_ID)
+  ) %>%
+  dplyr::filter(
+    stringr::str_detect(
+      .data$TCRlib_ID,
+      "^(ID\\.|#)\\d+$"
+    )
+  ) %>%
+  dplyr::group_by(
+    .data$TCRlib_ID
+  ) %>%
+  dplyr::summarise(
+    CDR3B_sc = collapse_uniq(.data$CDR3B),
+    is_PD1 = any(
+      .data$compartment == "PD1",
+      na.rm = TRUE
+    ),
+    is_tumor = any(
+      .data$tumor %in% TRUE,
+      na.rm = TRUE
+    ),
+    is_expanding = any(
+      .data$expanding %in% TRUE,
+      na.rm = TRUE
+    ),
+    is_frequent = any(
+      .data$high_count_baseline_day42 %in% TRUE,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    criteria_simplified = purrr::pmap_chr(
+      list(
+        .data$is_PD1,
+        .data$is_tumor,
+        .data$is_expanding,
+        .data$is_frequent
+      ),
+      function(
+        is_PD1,
+        is_tumor,
+        is_expanding,
+        is_frequent
+      ) {
+        x <- c(
+          if (isTRUE(is_PD1)) "PD1" else character(0),
+          if (isTRUE(is_tumor)) "Tumor" else character(0),
+          if (isTRUE(is_expanding)) "Expanding" else character(0)
+        )
+        if (length(x) > 0) {
+          paste(
+            x,
+            collapse = " | "
+          )
+        } else if (isTRUE(is_frequent)) {
+          "Frequent"
+        } else {
+          "None"
+        }
+      }
+    )
+  ) %>%
+  dplyr::rename(
+    V2 = TCRlib_ID
+  )
+tcr_lib.annotated <- tcr_lib %>%
+  tibble::as_tibble() %>%
+  dplyr::mutate(
+    V1 = as.character(.data$V1),
+    V2 = as.character(.data$V2),
+    CDR3B = stringr::str_extract(
+      .data$V1,
+      "^[^_]+"
+    )
+  ) %>%
+  dplyr::left_join(
+    criteria_by_TCRlib_ID,
+    by = "V2"
+  ) %>%
+  dplyr::mutate(
+    in_repertoire_clean = !is.na(.data$criteria_simplified),
+    criteria_simplified = dplyr::case_when(
+      .data$V2 == "#015" ~ "PD1 | Expanding",
+      .data$V2 == "#025" ~ "PD1",
+      .data$V2 == "#034" ~ "PD1 | Expanding",
+      .data$V2 == "#045" ~ "PD1 | Expanding",
+      TRUE ~ .data$criteria_simplified
+    ),
+    criteria_simplified = tidyr::replace_na(
+      .data$criteria_simplified,
+      "Not found"
+    ),
+    TCRlib_reactivity_plot = tidyr::replace_na(
+      .data$TCRlib_reactivity,
+      "NA"
+    ),
+    Traj_reactivity_plot = tidyr::replace_na(
+      .data$Traj_reactivity,
+      "NA"
+    )
+  )
+# --- Internal control ---
+base::table(
+  tcr_lib.annotated$criteria_simplified,
+  tcr_lib.annotated$TCRlib_reactivity_plot
+)
+base::table(
+  tcr_lib.annotated$criteria_simplified,
+  tcr_lib.annotated$Traj_reactivity_plot
+)
+
+```
+
+## panels
+
+Rank plot of CDR3Bs matching TCR library IDs, coloured by category.
+
+```{r}
+
+p_sc_fc_rank_tcrlib_criteria <- plot_sc_clonotype_fc_rank_tcrlib_criteria(
+  fc_rank = sc_fc_rank,
+  tcr_lib_annotated = tcr_lib.annotated,
+  fc_cutoff = fc.value,
+  point_size = 3,
+  label_size = 0,
+  label_tcrlib = FALSE
+)
+plots_list[["rank_tcrlib_cdr3b"]] <- p_sc_fc_rank_tcrlib_criteria
+
+```
+
+Distribution of CDR3Bs matching TCR library IDs, tagged by category.
+
+```{r}
+
+criteria_by_CDR3B <- tcr_lib.annotated %>%
+  mutate(CDR3B = as.character(CDR3B),
+         V2 = as.character(V2)) %>%
+  filter(!is.na(CDR3B), CDR3B != "",
+         !is.na(V2), V2 != "") %>%
+  group_by(CDR3B) %>%
+  summarise(
+    TCRlib_ID_plot = collapse_uniq(V2),
+    is_PD1 = any(stringr::str_detect(criteria_simplified, stringr::regex("(^| \\| )PD1($| \\| )")), na.rm = TRUE),
+    is_tumor = any(stringr::str_detect(criteria_simplified, stringr::regex("(^| \\| )Tumor($| \\| )")), na.rm = TRUE),
+    is_expanding = any(stringr::str_detect(criteria_simplified, stringr::regex("(^| \\| )Expanding($| \\| )")), na.rm = TRUE),
+    is_frequent = any(criteria_simplified == "Frequent", na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    criteria_simplified = purrr::pmap_chr(
+      list(is_PD1, is_tumor, is_expanding, is_frequent),
+      function(is_PD1, is_tumor, is_expanding, is_frequent) {
+        x <- c(
+          if (is_PD1) "PD1" else character(0),
+          if (is_tumor) "Tumor" else character(0),
+          if (is_expanding) "Expanding" else character(0)
+        )
+        if (length(x) > 0) {
+          paste(x, collapse = " | ")
+        } else if (is_frequent) {
+          "Frequent"
+        } else {
+          "None"
+        }
+      }
+    )
+  ) %>%
+  dplyr::select(CDR3B, TCRlib_ID_plot, criteria_simplified)
+pie_tcrlib_matching_cdr3b_data <- sc_fc_rank %>%
+  mutate(CDR3B = as.character(CDR3B)) %>%
+  distinct(CDR3B) %>%
+  inner_join(criteria_by_CDR3B, by = "CDR3B") %>%
+  dplyr::count(criteria_simplified, name = "n") %>%
+  arrange(desc(n)) %>%
+  mutate(
+    criteria_simplified = factor(criteria_simplified, levels = criteria_simplified),
+    percent = 100 * n / sum(n),
+    label = paste0(criteria_simplified, ": ", n, " (", round(percent, 1), "%)")
+  )
+p_pie_tcrlib_matching_cdr3b <- ggplot(pie_tcrlib_matching_cdr3b_data,
+                                      aes(x = "", y = n, fill = criteria_simplified)) +
+  geom_col(width = 1,
+           colour = "black",
+           linewidth = 0.15) +
+  coord_polar(theta = "y",
+              direction = -1) +
+  scale_fill_manual(values = criteria_colors,
+                    breaks = levels(pie_tcrlib_matching_cdr3b_data$criteria_simplified),
+                    labels = pie_tcrlib_matching_cdr3b_data$label,
+                    drop = FALSE) +
+  labs(title = paste0("TCRlib-matching CDR3β\nn = ", sum(pie_tcrlib_matching_cdr3b_data$n)),
+       x = NULL,
+       y = NULL,
+       fill = NULL) +
+  theme_void(base_size = 8) +
+  theme(plot.title = element_text(size = 9.5, face = "plain", hjust = 0.5, colour = "black"),
+        legend.position = "right",
+        legend.text = element_text(size = 7, colour = "black"),
+        legend.key.size = grid::unit(3, "mm"),
+        plot.margin = margin(5, 5, 5, 5))
+plots_list[["pie_tcrlib_matching_cdr3b"]] <- p_pie_tcrlib_matching_cdr3b
+
+```
+
+# fig. S4b
+
+Distribution of TCR library IDs, tagged by category.
+
+```{r}
+
+pie_tcrlib_criteria_data <- tcr_lib.annotated %>%
+  distinct(V2, .keep_all = TRUE) %>%
+  filter(!is.na(V2),
+         !stringr::str_starts(as.character(V2), "#")) %>%
+  mutate(
+    criteria_simplified = case_when(
+      is.na(criteria_simplified) ~ "Not found",
+      criteria_simplified %in% c("Not found in single-cell data", "Not in TCRlib") ~ "Not found",
+      TRUE ~ criteria_simplified
+    )
+  ) %>%
+  dplyr::count(criteria_simplified, name = "n") %>%
+  arrange(desc(n)) %>%
+  mutate(
+    criteria_simplified = factor(criteria_simplified, levels = criteria_simplified),
+    percent = 100 * n / sum(n),
+    label = paste0(criteria_simplified, ": ", n, " (", round(percent, 1), "%)")
+  )
+p_pie_tcrlib_criteria <- ggplot(pie_tcrlib_criteria_data,
+                                aes(x = "", y = n, fill = criteria_simplified)) +
+  geom_col(width = 1,
+           colour = "black",
+           linewidth = 0.15) +
+  coord_polar(theta = "y",
+              direction = -1) +
+  scale_fill_manual(values = criteria_colors,
+                    breaks = levels(pie_tcrlib_criteria_data$criteria_simplified),
+                    labels = pie_tcrlib_criteria_data$label,
+                    drop = FALSE) +
+  labs(title = paste0("TCR library IDs\nn = ", sum(pie_tcrlib_criteria_data$n)),
+       x = NULL,
+       y = NULL,
+       fill = NULL) +
+  theme_void(base_size = 8) +
+  theme(plot.title = element_text(size = 9.5, face = "plain", hjust = 0.5, colour = "black"),
+        legend.position = "right",
+        legend.text = element_text(size = 7, colour = "black"),
+        legend.key.size = grid::unit(3, "mm"),
+        plot.margin = margin(5, 5, 5, 5))
+plots_list[["pie_tcrlib_criteria"]] <- p_pie_tcrlib_criteria
+
+```
+
+# fig. S4c
+
+Longitudinal trajectories of CDR3Bs matching TCR library IDs, separated by category.
+
+```{r}
+
+patient <- pbl$RIO136
+clonotype_by <- "aminoAcid"
+floor_y <- 1e-3
+tp_levels <- tcr_timepoint_levels(patient)
+tp_days <- tcr_timepoint_days(tp_levels)
+matching_cdr3b_criteria <- sc_fc_rank %>%
+  mutate(CDR3B = as.character(CDR3B)) %>%
+  distinct(CDR3B) %>%
+  inner_join(criteria_by_CDR3B %>%
+               dplyr::select(CDR3B, criteria_simplified),
+             by = "CDR3B") %>%
+  mutate(
+    criteria_simplified = factor(criteria_simplified,
+                                 levels = names(criteria_colors))
+  )
+plot_data_tcrlib_matching_traj <- bind_rows(patient, .id = "timepoint") %>%
+  mutate(
+    timepoint = factor(timepoint, levels = tp_levels),
+    day = as.numeric(gsub("[^0-9]", "", as.character(timepoint))),
+    clone_raw = as.character(.data[[clonotype_by]]),
+    CDR3B = stringr::str_extract(clone_raw, "^[^_]+")
+  ) %>%
+  filter(CDR3B %in% matching_cdr3b_criteria$CDR3B) %>%
+  group_by(timepoint, day, CDR3B) %>%
+  summarise(
+    count = sum(count, na.rm = TRUE),
+    freq_in = sum(freq_in, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  right_join(expand_grid(timepoint = factor(tp_levels, levels = tp_levels),
+                         CDR3B = matching_cdr3b_criteria$CDR3B),
+             by = c("timepoint", "CDR3B")) %>%
+  mutate(
+    day = as.numeric(gsub("[^0-9]", "", as.character(timepoint))),
+    count = replace_na(count, 0),
+    freq_in = replace_na(freq_in, 0),
+    freq_pct = pmax(freq_in, floor_y)
+  ) %>%
+  left_join(matching_cdr3b_criteria, by = "CDR3B")
+facet_labels <- plot_data_tcrlib_matching_traj %>%
+  distinct(CDR3B, criteria_simplified) %>%
+  dplyr::count(criteria_simplified, name = "n") %>%
+  mutate(label = paste0(criteria_simplified, "\nn = ", n))
+facet_labels <- setNames(facet_labels$label, facet_labels$criteria_simplified)
+p_tcrlib_matching_traj_by_criteria <- ggplot(plot_data_tcrlib_matching_traj,
+                                             aes(x = day,
+                                                 y = freq_pct,
+                                                 group = CDR3B,
+                                                 colour = criteria_simplified)) +
+  geom_vline(xintercept = tp_days,
+             linetype = "dashed",
+             linewidth = 0.25,
+             colour = "grey85") +
+  geom_line(linewidth = 0.25,
+            alpha = 0.65) +
+  tcr_y_scale_log(floor_y = floor_y) +
+  scale_x_continuous(breaks = tp_days) +
+  scale_colour_manual(values = criteria_colors,
+                      breaks = names(criteria_colors),
+                      drop = FALSE) +
+  facet_wrap(~ criteria_simplified,
+             ncol = 5,
+             labeller = labeller(criteria_simplified = facet_labels)) +
+  labs(x = NULL,
+       y = "Frequency of unique\nCDR3β amino acid seq (%)",
+       title = paste0("TCRlib-matching CDR3β trajectories | n = ",
+                      n_distinct(plot_data_tcrlib_matching_traj$CDR3B))) +
+  tcr_theme_trajectory(base_size = 8, aspect.ratio = 0.65) +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(size = 7.5, colour = "black"),
+        panel.spacing = grid::unit(0.8, "lines"))
+plots_list[["traj_tcrlib_matching_cdr3b_by_criteria"]] <- p_tcrlib_matching_traj_by_criteria
+
+```
+
+# fig. S5d
+
+```{r}
+
+tcr_lib_selection_criteria <- tcr_lib %>%
+  mutate(
+    aminoAcid_tmp = stringr::str_extract(V1, "^[^_]+")
+  ) %>%
+  inner_join(
+    criteria_by_CDR3B %>%
+      dplyr::select(CDR3B, criteria_simplified),
+    by = c("aminoAcid_tmp" = "CDR3B")
+  ) %>%
+  filter(
+    aminoAcid_tmp %in% sc_fc_rank$CDR3B
+  ) %>%
+  mutate(
+    selection = factor(criteria_simplified,
+                       levels = names(criteria_colors))
+  ) %>%
+  dplyr::select(-aminoAcid_tmp)
+plots_list[["traj_tcrlib_matching_cdr3b_criteria_facet"]] <- plot_tested_tcr_trajectories(
+  patient_list = pbl$RIO136,
+  tcr_lib = tcr_lib_selection_criteria,
+  reactivity_col = "TCRlib_reactivity",
+  color_col = "TCRlib_color",
+  title = "TCRlib-matching CDR3β AA trajectories",
+  clonotype_by = "aminoAcid",
+  floor_y = 1e-3,
+  include_reactivities = c("Yes", "Auto-reactive", "No"),
+  show_legend = FALSE,
+  facet_col = "selection"
+)
+
+```
+
+# fig. 2f,h
+
+Longitudinal trajectories of validated TCRs
+
+```{r}
+
+# --- TCR library hits ---
+plots_list[["traj_pbl_tcrlib_tested_hits"]] <- plot_tested_tcr_trajectories(
+  patient_list = pbl$RIO136,
+  tcr_lib = tcr_lib,
+  reactivity_col = "TCRlib_reactivity",
+  color_col = "TCRlib_color",
+  title = "TCRlib-tested CDR3β AA trajectories",
+  clonotype_by = "aminoAcid",
+  floor_y = 1e-3,
+  include_reactivities = c("Yes", "Auto-reactive", "No"),
+  show_legend = FALSE
+)
+
+# --- Trajectories of extended TCR selection ---
+plots_list[["traj_pbl_traj_tested_hits"]] <- plot_tested_tcr_trajectories(
+  patient_list = pbl$RIO136,
+  tcr_lib = tcr_lib,
+  reactivity_col = "Traj_reactivity",
+  color_col = "Traj_color",
+  title = "Trajectory-tested CDR3β AA trajectories",
+  clonotype_by = "aminoAcid",
+  floor_y = 1e-3,
+  include_reactivities = c("Yes", "Auto-reactive", "No", "No-autoreactivity-tested"),
+  show_legend = FALSE
+)
+
+```
+
+# fig. 2i
+
+Distribution of validated IDs, tagged by category.
+
+```{r}
+
+pie_tcrlib_hits_data <- tcr_lib.annotated %>%
+  distinct(V2, .keep_all = TRUE) %>%
+  filter(TCRlib_reactivity == "Yes" | Traj_reactivity == "Yes") %>%
+  mutate(
+    criteria_simplified = case_when(
+      is.na(criteria_simplified) ~ "Not found",
+      criteria_simplified %in% c("Not found in single-cell data", "Not in TCRlib") ~ "Not found",
+      TRUE ~ criteria_simplified
+    )
+  ) %>%
+  dplyr::count(criteria_simplified, name = "n") %>%
+  arrange(desc(n)) %>%
+  mutate(
+    criteria_simplified = factor(criteria_simplified, levels = criteria_simplified),
+    percent = 100 * n / sum(n),
+    label = paste0(criteria_simplified, ": ", n, " (", round(percent, 1), "%)")
+  )
+p_pie_tcrlib_hits <- ggplot(pie_tcrlib_hits_data,
+                                aes(x = "", y = n, fill = criteria_simplified)) +
+  geom_col(width = 1,
+           colour = "black",
+           linewidth = 0.15) +
+  coord_polar(theta = "y",
+              direction = -1) +
+  scale_fill_manual(values = criteria_colors,
+                    breaks = levels(pie_tcrlib_hits_data$criteria_simplified),
+                    labels = pie_tcrlib_hits_data$label,
+                    drop = FALSE) +
+  labs(title = paste0("TCR library IDs\nn = ", sum(pie_tcrlib_hits_data$n)),
+       x = NULL,
+       y = NULL,
+       fill = NULL) +
+  theme_void(base_size = 8) +
+  theme(plot.title = element_text(size = 9.5, face = "plain", hjust = 0.5, colour = "black"),
+        legend.position = "right",
+        legend.text = element_text(size = 7, colour = "black"),
+        legend.key.size = grid::unit(3, "mm"),
+        plot.margin = margin(5, 5, 5, 5))
+plots_list[["pie_tcrlib_hits"]] <- p_pie_tcrlib_hits
+
+```
+
+# fig. S6a
+
+Selection and trajectories of extended TCR validation
+
+```{r}
+
+traj_tcr <- tcr_lib %>%
+  filter(Traj) %>%
+  distinct(
+    V1,
+    TCRlib_hit,
+    TCRlib_reactivity,
+    TCRlib_color,
+    Traj,
+    Traj_reactivity,
+    Traj_color,
+    .keep_all = TRUE
+  ) %>%
+  mutate(
+    CDR3B = stringr::str_extract(V1, "^[^_]+")
+  ) %>%
+  left_join(
+    criteria_by_CDR3B %>%
+      dplyr::select(CDR3B, criteria_simplified),
+    by = "CDR3B"
+  ) %>%
+  mutate(
+    criteria_simplified = replace_na(criteria_simplified, "None"),
+    criteria_simplified = as.character(criteria_simplified)
+  )
+
+# Internal control: Check that all trajectory-tested IDs were annotated based on bulk data categories.
+traj_tested <- c(traj_yes_ids, traj_autoreactive_ids, traj_no_autoreactivity_tested_ids, traj_no_ids) 
+traj_tested[!traj_tested %in% traj_tcr$V2]
+
+# --- Add ID.057, as it was not found in bulk TCRb-Seq data. It shares TRB with ID.056, that's why there is only one trajectory for this TRB ---
+id.057 <- tibble::tibble(
+  V1 = "Not_found",
+  V2 = "ID.057",
+  TCRlib_hit = TRUE,
+  TCRlib_reactivity = NA_character_,
+  TCRlib_color = NA_character_,
+  Traj = TRUE,
+  Traj_reactivity = "No",
+  Traj_color = "gray70",
+  CDR3B = "Not_found",
+  criteria_simplified = "PD1 | Expanding"
+)
+
+traj_tcr <- dplyr::bind_rows(traj_tcr, id.057) %>%
+  mutate(
+    criteria_simplified = factor(
+      criteria_simplified,
+      levels = names(criteria_colors)
+    )
+  )
+
+```
+
+```{r}
+
+plot_data <- traj_tcr %>%
+  dplyr::count(criteria_simplified, name = "n") %>%
+  filter(!is.na(criteria_simplified), n > 0) %>%
+  arrange(desc(n)) %>%
+  mutate(
+    criteria_simplified = factor(criteria_simplified, levels = as.character(criteria_simplified))
+  )
+y_max <- sum(plot_data$n, na.rm = TRUE)
+
+plots_list[["traj_tcr_selection"]] <- ggplot(plot_data, aes(x = "selection", y = n, fill = criteria_simplified)) +
+  geom_col(width = 0.55, colour = "white", linewidth = 0.2) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    size = 3,
+    colour = "black"
+  ) +
+  scale_fill_manual(
+    values = criteria_colors,
+    breaks = levels(plot_data$criteria_simplified),
+    drop = FALSE
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, y_max, by = 5),
+    labels = scales::label_number(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    x = NULL,
+    y = "Number of included TCRs",
+    fill = "Selection criterion",
+    title = "Trajectory-tested TCRs by selection criterion"
+  ) +
+  theme_classic(base_size = 10) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "right",
+    aspect.ratio = 2
+  )
+
+```
+
+# fig. S6d
+
+```{r}
+
+cols <- c(
+  "Yes" = "#CC1417",
+  "Auto-reactive" = "black",
+  "No" = "#B3B3B2",
+  "No-autoreactivity-tested" = "#CBBBA0"
+)
+plot_data <- traj_tcr %>%
+  mutate(
+    Traj_reactivity = factor(
+      Traj_reactivity,
+      levels = c("Yes", "Auto-reactive", "No", "No-autoreactivity-tested")
+    )
+  ) %>%
+  dplyr::count(criteria_simplified, Traj_reactivity, name = "n") %>%
+  filter(!is.na(criteria_simplified), !is.na(Traj_reactivity))
+y_max <- plot_data %>%
+  group_by(criteria_simplified) %>%
+  summarise(total = sum(n), .groups = "drop") %>%
+  pull(total) %>%
+  max(na.rm = TRUE)
+
+plots_list[["traj_tcr_selection_reactivity"]] <- ggplot(plot_data, aes(x = criteria_simplified, y = n, fill = Traj_reactivity)) +
+  geom_col(width = 0.75, colour = "white", linewidth = 0.2) +
+  geom_text(
+    aes(label = n),
+    position = position_stack(vjust = 0.5),
+    size = 3
+  ) +
+  scale_fill_manual(
+    values = cols,
+    breaks = names(cols),
+    drop = FALSE
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, y_max, by = 2),
+    labels = scales::label_number(accuracy = 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    x = NULL,
+    y = "Number of included TCRs",
+    fill = NULL,
+    title = "Trajectory-tested TCRs by selection criterion"
+  ) +
+  theme_classic(base_size = 10) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    aspect.ratio = 1.5
+  )
+
+```
+
+# fig. S6f
+
+```{r}
+
+tcr_lib_selection <- tcr_lib %>%
+  filter(Traj) %>%
+  mutate(
+    aminoAcid_tmp = stringr::str_extract(V1, "^[^_]+")
+  ) %>%
+  left_join(
+    criteria_by_CDR3B %>%
+      dplyr::select(CDR3B, criteria_simplified),
+    by = c("aminoAcid_tmp" = "CDR3B")
+  ) %>%
+  mutate(
+    selection = replace_na(criteria_simplified, "None"),
+    selection = factor(selection, levels = names(criteria_colors))
+  ) %>%
+  dplyr::select(-aminoAcid_tmp, -criteria_simplified)
+
+plots_list[["traj_pbl_traj_tested_hits_facet"]] <- plot_tested_tcr_trajectories(
+  patient_list = pbl$RIO136,
+  tcr_lib = tcr_lib_selection,
+  reactivity_col = "Traj_reactivity",
+  color_col = "Traj_color",
+  title = "Trajectory-tested CDR3β AA trajectories",
+  clonotype_by = "aminoAcid",
+  floor_y = 1e-3,
+  include_reactivities = c("Yes", "Auto-reactive", "No", "No-autoreactivity-tested"),
+  show_legend = FALSE,
+  facet_col = "selection"
+)
+
+```
+
+# fig. S6e
+
+Internal control: Are the IDs unique to CD3 and CD3+PD-1, or are they restricted to PD-1 populations?
+
+```{r}
+
+reactive_levels <- c("Yes")
+
+reactive_tcr_map <- tcr_lib %>%
+  mutate(
+    TCRlib_ID = as.character(V2),
+    CDR3B = stringr::str_extract(V1, "^[^_]+")
+  ) %>%
+  filter(
+    TCRlib_reactivity %in% reactive_levels | Traj_reactivity %in% reactive_levels,
+    !is.na(TCRlib_ID), TCRlib_ID != "",
+    !is.na(CDR3B), CDR3B != ""
+  ) %>%
+  distinct(TCRlib_ID, CDR3B)
+
+repertoire_trb_long <- repertoire %>%
+  mutate(cell_id = paste(sample, barcode, sep = "_")) %>%
+  tidyr::separate_longer_delim(cols = c(v_gene, j_gene, cdr3, chain), delim = ";") %>%
+  mutate(
+    across(c(v_gene, j_gene, cdr3, chain), stringr::str_trim),
+    CDR3B = cdr3,
+    population = case_when(
+      stringr::str_detect(sample, stringr::regex("bulk", ignore_case = TRUE)) ~ "CD3+",
+      stringr::str_detect(sample, stringr::regex("pd1", ignore_case = TRUE)) ~ "CD3+PD1hi",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(
+    chain == "TRB",
+    !is.na(CDR3B), CDR3B != "",
+    population %in% c("CD3+", "CD3+PD1hi")
+  ) %>%
+  distinct(cell_id, sample, population, CDR3B)
+
+reactive_tcr_cell_counts <- repertoire_trb_long %>%
+  inner_join(reactive_tcr_map, by = "CDR3B") %>%
+  group_by(TCRlib_ID, population) %>%
+  summarise(
+    n_cells = n_distinct(cell_id),
+    .groups = "drop"
+  ) %>%
+  tidyr::complete(
+    TCRlib_ID,
+    population = c("CD3+", "CD3+PD1hi"),
+    fill = list(n_cells = 0)
+  ) %>%
+  mutate(
+    id_num = readr::parse_number(TCRlib_ID)
+  )
+
+id_order <- reactive_tcr_cell_counts %>%
+  distinct(TCRlib_ID, id_num) %>%
+  arrange(id_num) %>%
+  pull(TCRlib_ID)
+
+reactive_tcr_cell_counts <- reactive_tcr_cell_counts %>%
+  mutate(
+    TCRlib_ID = factor(TCRlib_ID, levels = id_order),
+    population = factor(population, levels = c("CD3+", "CD3+PD1hi"))
+  )
+
+population_cols <- c(
+  "CD3+" = "#9CCB8B",
+  "CD3+PD1hi" = "#5E8F68"
+)
+
+plots_list[["bar_reactive_tcr_id_cells_cd3_pd1"]] <- ggplot(
+  reactive_tcr_cell_counts,
+  aes(x = TCRlib_ID, y = n_cells, fill = population)
+) +
+  geom_col(
+    position = position_dodge(width = 0.75),
+    width = 0.65,
+    colour = "black",
+    linewidth = 0.15
+  ) +
+  geom_text(
+    aes(label = ifelse(n_cells > 0, n_cells, "")),
+    position = position_dodge(width = 0.75),
+    vjust = -0.25,
+    size = 2.4,
+    colour = "black"
+  ) +
+  scale_fill_manual(
+    values = population_cols,
+    breaks = c("CD3+", "CD3+PD1hi"),
+    drop = FALSE
+  ) +
+  scale_y_continuous(
+    labels = scales::label_number(accuracy = 1),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    x = NULL,
+    y = "Number of cells",
+    fill = NULL,
+    title = "Reactive TCR IDs across CD3+ and CD3+PD1hi populations"
+  ) +
+  theme_classic(base_size = 9) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7, colour = "black"),
+    axis.text.y = element_text(size = 7, colour = "black"),
+    axis.title = element_text(size = 9, colour = "black"),
+    axis.line = element_line(linewidth = 0.3, colour = "black"),
+    axis.ticks = element_line(linewidth = 0.3, colour = "black"),
+    legend.position = "right",
+    plot.title = element_text(size = 10, face = "plain", hjust = 0.5, colour = "black"),
+    aspect.ratio = 0.6
+  )
+
+plots_list[["bar_reactive_tcr_id_cells_cd3_pd1"]]
+
+```
+
+# traj x pheno
+
+```{r}
+
+# --- Parameters ---
+patient <- "RIO136"
+time <- "post6"
+bulk_comp <- "cd8_int_nn"
+annot_dir <- file.path(
+  "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients",
+  patient,
+  "outs/traj"
+)
+manual_colors <- c(
+  "CD8 TCM"                 = "#0B6F61",
+  "CD8 activated TCM-like"  = "#84D8C5",
+  "CD8 activated TEM GZMK+" = "#E45C95",
+  "CD8 LEF1+ ZNF683+"       = "#B08BCE",
+  "CD8 TEMRA FGFBP2+"       = "#123FD1",
+  "CD8 TEMRA LILRB1+"       = "#78B7F9",
+  "CD8 proliferating"       = "#4B1D73"
+)
+# --- Load annotation ---
+annotation <- read.delim(
+  file.path(
+    annot_dir,
+    paste0("Single-cell_", bulk_comp, "_", time, ".tsv")
+  ),
+  sep = "\t",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+# --- Extract and plot bulk trajectories ---
+bulk_result <- plot_annotated_bulk_trajectories(
+  patient_list = pbl[[patient]],
+  annotation = annotation,
+  time = time,
+  manual_colors = manual_colors,
+  compartment = bulk_comp,
+  output_dir = annot_dir,
+  floor_y = 1e-3
+)
+# --- Dynamic object names ---
+assign(
+  paste0("bulk_", time),
+  bulk_result$data
+)
+assign(
+  paste0("p_bulk_", time),
+  bulk_result$plot
+)
+# --- Retrieve selected objects ---
+bulk_time <- get(
+  paste0("bulk_", time)
+)
+p_bulk_time <- get(
+  paste0("p_bulk_", time)
+)
+print(p_bulk_time)
+
+```
+# tumor freq rank
+
+And annotations of tumor-reactive or autoreactive IDs.
+
+```{r}
+reactivity_colors <- c(
+  "Yes" = "red3",
+  "No" = "black",
+  "Auto-reactive" = "#E69F00",
+  "EBV" = "#3c4b99",
+  "CMV" = "seagreen3",
+  "TCR library tested" = "gray60",
+  "NA" = "gray80"
+)
+tcr_shapes <- c(
+  "ID.082" = 35,
+  "ID.746" = 6,
+  "ID.525" = 38,
+  "ID.640" = 0,
+  "ID.024" = 5
+)
+# --- Parameters ---
+patient <- "RIO136"
+biopsy_sample <- "p136-Tfrozen_TCRB in frame"
+autoreactive_ids <- c(
+  "ID.082",
+  "ID.525"
+)
+reactive_ids <- c(
+  "ID.746",
+  "ID.640",
+  "ID.024"
+)
+# --- Prepare selected TCR annotation ---
+tcr_annotation <- tcr_lib %>%
+  as.data.frame() %>%
+  transmute(
+    aminoAcid = stringr::str_remove(
+      stringr::str_trim(as.character(V1)),
+      "_.*$"
+    ),
+    TCR_ID = stringr::str_trim(as.character(V2)),
+    reactivity = case_when(
+      TCR_ID %in% autoreactive_ids ~ "Auto-reactive",
+      TCR_ID %in% reactive_ids ~ "Reactive",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(
+    !is.na(aminoAcid),
+    aminoAcid != "",
+    !is.na(TCR_ID),
+    !is.na(reactivity)
+  ) %>%
+  group_by(
+    aminoAcid,
+    reactivity
+  ) %>%
+  summarise(
+    TCR_ID = paste(
+      unique(TCR_ID),
+      collapse = "; "
+    ),
+    .groups = "drop"
+  )
+# --- Rank biopsy clonotypes ---
+biopsy_rank <- biopsy[[patient]][[biopsy_sample]] %>%
+  mutate(
+    aminoAcid = stringr::str_trim(
+      as.character(aminoAcid)
+    )
+  ) %>%
+  filter(
+    !is.na(aminoAcid),
+    aminoAcid != "",
+    !is.na(freq_in),
+    is.finite(freq_in),
+    freq_in > 0
+  ) %>%
+  group_by(aminoAcid) %>%
+  summarise(
+    count = sum(count, na.rm = TRUE),
+    freq_in = sum(freq_in, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(
+    desc(freq_in),
+    desc(count)
+  ) %>%
+  mutate(
+    rank = row_number()
+  ) %>%
+  left_join(
+    tcr_annotation,
+    by = "aminoAcid"
+  )
+# --- Selected matched TCRs ---
+biopsy_rank_labeled <- biopsy_rank %>%
+  filter(
+    !is.na(TCR_ID),
+    !is.na(reactivity)
+  ) %>%
+  tidyr::separate_rows(
+    TCR_ID,
+    sep = "; "
+  ) %>%
+  mutate(
+    TCR_ID = stringr::str_trim(TCR_ID)
+  )
+# --- Check expected IDs ---
+expected_ids <- c(
+  autoreactive_ids,
+  reactive_ids
+)
+matched_ids <- biopsy_rank_labeled %>%
+  pull(TCR_ID) %>%
+  unique()
+missing_ids <- setdiff(
+  expected_ids,
+  matched_ids
+)
+if (length(missing_ids) > 0) {
+  warning(
+    "These TCR IDs were not found in the biopsy by amino-acid match: ",
+    paste(missing_ids, collapse = ", ")
+  )
+}
+# --- Plot ---
+p_biopsy_rank <- ggplot(
+  biopsy_rank,
+  aes(
+    x = rank,
+    y = freq_in
+  )
+) +
+  geom_line(
+    linewidth = 0.2,
+    color = "grey30"
+  ) +
+  geom_point(
+    size = 0.45,
+    color = "grey30"
+  ) +
+  geom_point(
+    data = biopsy_rank_labeled,
+    aes(
+      color = reactivity,
+      shape = TCR_ID
+    ),
+    size = 2.5,
+    stroke = 0.6
+  ) +
+  ggrepel::geom_text_repel(
+    data = biopsy_rank_labeled,
+    aes(
+      label = TCR_ID,
+      color = reactivity
+    ),
+    size = 2.6,
+    box.padding = 0.35,
+    point.padding = 0.2,
+    min.segment.length = 0,
+    segment.linewidth = 0.2,
+    max.overlaps = Inf,
+    seed = 1,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = c(
+      "Auto-reactive" = unname(
+        reactivity_colors["Auto-reactive"]
+      ),
+      "Reactive" = unname(
+        reactivity_colors["Yes"]
+      )
+    ),
+    breaks = c(
+      "Auto-reactive",
+      "Reactive"
+    ),
+    name = NULL
+  ) +
+  scale_shape_manual(
+    values = tcr_shapes,
+    breaks = names(tcr_shapes),
+    name = "TCR.ID"
+  ) +
+  scale_y_log10() +
+  scale_x_continuous(
+    labels = scales::comma,
+    expand = expansion(
+      mult = c(0.02, 0.12)
+    )
+  ) +
+  labs(
+    x = "Amino-acid clonotype rank",
+    y = "Clonotype frequency (%)"
+  ) +
+  coord_cartesian(
+    clip = "off"
+  ) +
+  guides(
+    color = guide_legend(
+      order = 1,
+      override.aes = list(
+        shape = 16,
+        size = 2.5
+      )
+    ),
+    shape = guide_legend(
+      order = 2,
+      override.aes = list(
+        color = "black",
+        size = 2.5
+      )
+    )
+  ) +
+  theme_classic() +
+  theme(
+    axis.title = element_text(
+      size = 10,
+      color = "black"
+    ),
+    axis.text = element_text(
+      size = 8,
+      color = "black"
+    ),
+    axis.line = element_line(
+      linewidth = 0.25,
+      color = "black"
+    ),
+    axis.ticks = element_line(
+      linewidth = 0.15,
+      color = "black"
+    ),
+    axis.ticks.length = grid::unit(
+      1.5,
+      "pt"
+    ),
+    legend.title = element_text(
+      size = 9,
+      color = "black"
+    ),
+    legend.text = element_text(
+      size = 8,
+      color = "black"
+    ),
+    plot.margin = margin(
+      5,
+      35,
+      5,
+      5
+    ),
+    aspect.ratio = 1
+  )
+plots_list[["biopsy_rank"]] <- p_biopsy_rank
+print(plots_list[["biopsy_rank"]])
+```
+
+# save
+
+Reactivity IDs.
+
+```{r}
+
+# --- Save annotated TCR library information for single-cell analysis ---
+tcr_lib.annotated.save <- tcr_lib.annotated %>%
+  dplyr::select(
+    matched_ID = V2,
+    TCRlib_reactivity,
+    Traj_reactivity,
+    criteria_simplified
+  ) %>%
+  mutate(
+    reactivity = case_when(
+      TCRlib_reactivity == "Yes" | Traj_reactivity == "Yes" ~ "Yes",
+      TCRlib_reactivity == "Auto-reactive" | Traj_reactivity == "Auto-reactive" ~ "Auto-reactive",
+      TCRlib_reactivity %in% c("No", "No-autoreactivity-tested") |
+        Traj_reactivity %in% c("No", "No-autoreactivity-tested") ~ "No",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  dplyr::select(-TCRlib_reactivity, -Traj_reactivity)
+
+# --- Save the table ---
+tcr_lib_annotated_file <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/libraries/final/RIO136/tcr_lib_annotated.txt"
+
+dir.create(
+  dirname(tcr_lib_annotated_file),
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+write.table(
+  tcr_lib.annotated.save,
+  file = tcr_lib_annotated_file,
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
+
+```
+
+Save plots.
+
+```{r}
+
+datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/manuscript/illustrator/plots/tcrb/trajectories-final"
+plots_dir <- file.path(datapath, "plots")
+
+dir.create(
+  plots_dir,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+for (i in names(plots_list)) {
+  out <- file.path(
+    plots_dir,
+    paste0(i, ".pdf")
+  )
+
+  if (is.null(plots_list[[i]])) {
+    message("Skipping '", i, "': plot is NULL")
+    next
+  }
+
+  tryCatch(
+    {
+      ggsave(
+        filename = out,
+        plot = plots_list[[i]],
+        device = "pdf",
+        width = 7.5,
+        height = 7.5,
+        units = "in",
+        limitsize = FALSE
+      )
+
+      message("Saved: ", out)
+    },
+    error = function(e) {
+      if (file.exists(out)) {
+        unlink(out)
+      }
+
+      message(
+        sprintf(
+          "Skipping '%s': %s",
+          i,
+          conditionMessage(e)
+        )
+      )
+    }
+  )
+}
+
+```

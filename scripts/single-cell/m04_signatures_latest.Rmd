@@ -106,16 +106,16 @@ The phenotype comparisons are generated from a mutually exclusive category. Reac
 ```{r, fig.width=15}
 time_points <- c("pre", "post1", "post2", "post6")
 comparison_groups <- c(
-  "CD8_TCM"                = "CD8 TCM",
-  "CD8_activated_TCM_like" = "CD8 activated TCM-like",
-  "CD8_activated_TEM"      = "CD8 activated TEM",
-  "CD8_TEMRA_KLRG1"        = "CD8 TEMRA KLRG1+",
-  "CD8_TEMRA_FGFBP2"       = "CD8 TEMRA FGFBP2+",
-  "CD8_TEMRA_LILRB1"       = "CD8 TEMRA LILRB1+",
-  "CD8_proliferating"      = "CD8 proliferating",
-  "Viral_databases"        = "Viral_databases",
-  "Non_reactive"           = "Non-reactive",
-  "Non_hits"               = "Non-hits"
+  "CD8_TCM"                 = "CD8 TCM",
+  "CD8_activated_TCM_like"  = "CD8 activated TCM-like",
+  "CD8_activated_TEM_GZMK"  = "CD8 activated TEM GZMK+",
+  "CD8_LEF1_ZNF683"         = "CD8 LEF1+ ZNF683+",
+  "CD8_TEMRA_FGFBP2"        = "CD8 TEMRA FGFBP2+",
+  "CD8_TEMRA_LILRB1"        = "CD8 TEMRA LILRB1+",
+  "CD8_proliferating"       = "CD8 proliferating",
+  "Viral_databases"         = "Viral_databases",
+  "Non_reactive"            = "Non-reactive",
+  "Non_hits"                = "Non-hits"
 )
 run_iTAG_comparison <- function(obj,
                                 time_point,
@@ -419,83 +419,6 @@ plots_list[["iTAG_signature_all"]] <- wrap_plots(
 ) + plot_annotation(title = "Post6")
 ```
 
-# Yossef et al.
-
-The data were downloaded from dbGAP and aligned with Cell Ranger, then processed following standard procedures (separate Yossef et al. pipeline, M01_Script.Rmd). The resulting object is read from `data/public/int_filt_annot.rds`.
-
-```{r}
-sample2 <- "public_yossef_et_al"
-compartment2 <- "int_filt_annot"
-object.yossef <- readRDS(file.path(datapath_load, "public", paste0(compartment2, ".rds")))
-# Signatures.
-signatures <- c(
-  readRDS(file.path(int_dir, "markers", compartment, "itag_signatures.rds"))
-)
-signatures$TRTPBL <- TRTPBL_signature
-object.yossef <- AddModuleScore_UCell(object.yossef, assay = "RNA", features = signatures, w_neg = 0.15, ncores=8)
-saveRDS(object.yossef, file.path(int_dir, "seurat", paste0(sample2, "_", compartment2, ".rds")))
-```
-
-Overall performance of the transcriptomic signatures.
-
-```{r}
-g1 <- plot_box_with_stats(
-  seurat_object = object.yossef,
-  feature = "iTAG_pre_UCell",
-  group_by = "category",
-  comparisons = list(c("Reactive", "Non-reactive")),
-  category_colors = category_colors
-  )
-g2 <- plot_box_with_stats(
-  seurat_object = object.yossef,
-  feature = "iTAG_post1_UCell",
-  group_by = "category",
-  comparisons = list(c("Reactive", "Non-reactive")),
-  category_colors = category_colors
-  )
-g3 <- plot_box_with_stats(
-  seurat_object = object.yossef,
-  feature = "iTAG_post2_UCell",
-  group_by = "category",
-  comparisons = list(c("Reactive", "Non-reactive")),
-  category_colors = category_colors
-  )
-g4 <- plot_box_with_stats(
-  seurat_object = object.yossef,
-  feature = "iTAG_all_UCell",
-  group_by = "category",
-  comparisons = list(c("Reactive", "Non-reactive")),
-  category_colors = category_colors
-)
-g5 <- plot_box_with_stats(
-  seurat_object = object.yossef,
-  feature = "Yossef_NeoTCR_PBL_UCell",
-  group_by = "category",
-  comparisons = list(c("Reactive", "Non-reactive")),
-  category_colors = category_colors
-)
-p <- wrap_plots(list(g1, g2, g3, g4, g5), ncol = 5)
-plots_list[["iTAG_signature_on_Yossef_yield"]] <- p
-```
-
-The number of TCRs captured by iTAG signatures in the Yossef et al. cohort.
-
-```{r}
-top_clonotypes <- 100
-signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
-performance_plots <- list()
-for (i in unique(object.yossef$patient)) {
-  res <- plot_reactive_top(object.yossef,
-                           sample = i,
-                           pivot_cols = signatures_to_compare,
-                           top_n = top_clonotypes
-                           )
-  performance_plots[[i]] <- res$plot
-}
-p <- wrap_plots(performance_plots, ncol = 4)
-plots_list[["iTAG_signature_on_Yossef_capture"]] <- p
-```
-
 # Heatmap
 
 Old staff (Ricardo's approach)
@@ -573,6 +496,7 @@ top_n_per_timepoint <- 20
 time_order <- c("pre", "post1", "post2", "post6")
 assay_use <- DefaultAssay(obj)
 test_use <- "wilcox"
+signatures <- readRDS(file.path(int_dir, "markers", compartment, "itag_signatures.rds"))
 signature_genes <- signatures$iTAG_all %>%
   unique() %>%
   .[!grepl("-$", .)]
@@ -765,7 +689,7 @@ top_genes_by_time <- findmarkers_results %>%
   )
 print(top_genes_by_time)
 top_gene_counts <- top_genes_by_time %>%
-  count(
+  dplyr::count(
     Time,
     name = "n_selected"
   )

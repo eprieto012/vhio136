@@ -300,7 +300,7 @@ mito_plots_filter <- ggplot(object@meta.data, aes(x = log(percent.mt), y = log(p
   scale_shape_manual(values = c("yes" = 21, "no" = 3)) +
   ggtitle("IC05")
 plots_list[["IC05_qc_mt_vs_tcr"]] <- mito_plots_filter
-print(plots_list$IC05_qc_mt_vs_tcr.pdf)
+print(plots_list$IC05_qc_mt_vs_tcr)
 rm(mito_plots_filter)
 ```
 
@@ -396,7 +396,7 @@ mito_plots_filter <- ggplot(object@meta.data, aes(x = log(percent.mt), y = log(p
   scale_shape_manual(values = c("yes" = 21, "no" = 3)) +
   ggtitle("IC05")
 plots_list[["IC05_qc_mt_vs_tcr_filt"]] <- mito_plots_filter
-print(wrap_plots(plots_list$IC05_qc_mt_vs_tcr.pdf, plots_list$IC05_qc_mt_vs_tcr_filt.pdf, ncol = 2))
+print(wrap_plots(plots_list$IC05_qc_mt_vs_tcr, plots_list$IC05_qc_mt_vs_tcr_filt, ncol = 2))
 rm(mito_plots_filter)
 ```
 

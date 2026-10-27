@@ -15,14 +15,15 @@ source(file.path(setup_dir, "setup.R"), local = TRUE)
 sample <- "vhio136"
 int_dir <- file.path(datapath, sample, "integrated")
 
-plot_dir <- file.path(int_dir, "plots", "manuscript")
+plot_dir <- file.path(results_dir, "manuscript")
 if (!dir.exists(plot_dir)) {
   dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
 }
-annot_dir <- file.path(int_dir, "traj")
-if (!dir.exists(annot_dir)) {
-  dir.create(annot_dir, showWarnings = FALSE, recursive = TRUE)
-}
+traj_dir <- file.path(int_dir, "phenotype-trajectories")
+traj_plot_dir <- file.path(traj_dir, "plots")
+traj_table_dir <- file.path(traj_dir, "tables")
+dir.create(traj_plot_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(traj_table_dir, showWarnings = FALSE, recursive = TRUE)
 ```
 
 Tumor-reactive TCR colors
@@ -122,7 +123,6 @@ table(
 overlap_idx <- which(!is.na(obj$reactivity) & !is.na(obj$epitope_species))
 overlap_cells <- rownames(obj@meta.data)[overlap_idx]
 obj@meta.data[overlap_cells, c("reactivity", "epitope_species", "matched_ID", "tumor", "time", "sample", "clonotype_id", "cdr3", "v_gene", "j_gene"), drop = FALSE]
-
 ```
 
 Number of cells with annotated specificity.
@@ -210,7 +210,7 @@ clono_freq <- obj@meta.data %>%
     !is.na(key)
   ) %>%
   select(key, TCRb, time) %>%
-  count(time, key, TCRb, name = "n_cells") %>%
+  dplyr::count(time, key, TCRb, name = "n_cells") %>%
   group_by(time) %>%
   mutate(
     total_cells_time = sum(n_cells),
@@ -258,173 +258,176 @@ clono_freq <- obj@meta.data %>%
 ```
 
 ```{r}
-# --- Select annotation time ---
-time <- "post6"
+# --- Annotate, plot and save each time point ---
+for (i in levels(clono_freq$time)) {
+  time <- i
 
-# --- Annotate clonotypes ---
-annotation <- obj@meta.data %>%
-  filter(
-    .data$time == .env$time,
-    stringr::str_detect(chains, "TRB")
-  ) %>%
-  count(key, TCRb, manual.annotation, name = "n_cells") %>%
-  filter(!is.na(manual.annotation)) %>%
-  group_by(key) %>%
-  mutate(
-    max_n_cells = max(n_cells),
-    n_majority_annotations = sum(n_cells == max_n_cells)
-  ) %>%
-  filter(
-    n_cells == max_n_cells,
-    n_majority_annotations == 1
-  ) %>%
-  ungroup() %>%
-  mutate(annotation_status = "Majority annotation") %>%
-  select(
-    key,
-    TCRb,
-    manual.annotation,
-    n_cells,
-    annotation_status
-  ) %>%
-  arrange(key, TCRb)
+  # --- Annotate clonotypes ---
+  annotation <- obj@meta.data %>%
+    filter(
+      .data$time == .env$time,
+      stringr::str_detect(chains, "TRB")
+    ) %>%
+    dplyr::count(key, TCRb, manual.annotation, name = "n_cells") %>%
+    filter(!is.na(manual.annotation)) %>%
+    group_by(key) %>%
+    mutate(
+      max_n_cells = max(n_cells),
+      n_majority_annotations = sum(n_cells == max_n_cells)
+    ) %>%
+    filter(
+      n_cells == max_n_cells,
+      n_majority_annotations == 1
+    ) %>%
+    ungroup() %>%
+    mutate(annotation_status = "Majority annotation") %>%
+    select(
+      key,
+      TCRb,
+      manual.annotation,
+      n_cells,
+      annotation_status
+    ) %>%
+    arrange(key, TCRb)
 
-# --- Save annotation table ---
-write.table(
-  annotation,
-  file = file.path(
-    annot_dir,
-    paste0("Single-cell_", compartment, "_", time, ".tsv")
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-# --- Add phenotype to longitudinal frequencies ---
-clono_pheno <- clono_freq %>%
-  inner_join(
-    annotation %>%
-      distinct(key, TCRb, .keep_all = TRUE),
-    by = c("key", "TCRb")
-  ) %>%
-  arrange(key, TCRb, time_numeric)
-
-assign(
-  paste0("clono_pheno_", time),
-  clono_pheno
-)
-
-# --- Plot longitudinal trajectories ---
-p_clono_pheno <- ggplot(
-  clono_pheno,
-  aes(
-    x = time_numeric,
-    y = frequency,
-    group = interaction(key, TCRb),
-    color = manual.annotation
-  )
-) +
-  geom_line(
-    linewidth = 0.35,
-    alpha = 0.75
-  ) +
-  facet_wrap(
-    ~ manual.annotation,
-    ncol = 7
-  ) +
-  scale_x_continuous(
-    breaks = c(0, 14, 42, 140),
-    expand = expansion(mult = c(0.02, 0.02))
-  ) +
-  scale_y_log10(
-    breaks = 10^(-4:1),
-    labels = c(
-      "0.0001",
-      "0.001",
-      "0.01",
-      "0.1",
-      "1",
-      "10"
-    )
-  ) +
-  scale_color_manual(
-    values = manual_colors,
-    drop = FALSE
-  ) +
-  labs(
-    x = "Time",
-    y = "Clonotype frequency"
-  ) +
-  theme_classic() +
-  theme(
-    axis.title = element_text(
-      size = 10,
-      color = "black"
+  # --- Save annotation table ---
+  write.table(
+    annotation,
+    file = file.path(
+      traj_table_dir,
+      paste0("Single-cell_", compartment, "_", time, ".tsv")
     ),
-    axis.text = element_text(
-      size = 8,
-      color = "black"
-    ),
-    axis.line = element_line(
-      linewidth = 0.25,
-      color = "black"
-    ),
-    axis.ticks = element_line(
-      linewidth = 0.15,
-      color = "black"
-    ),
-    axis.ticks.length = unit(
-      1.5,
-      "pt"
-    ),
-    panel.border = element_rect(
-      fill = NA,
-      linewidth = 0.4,
-      color = "black"
-    ),
-    panel.grid.major.x = element_line(
-      linewidth = 0.3,
-      linetype = "dashed",
-      color = "grey85"
-    ),
-    panel.grid.minor.x = element_blank(),
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor.y = element_blank(),
-    strip.background = element_blank(),
-    strip.text = element_text(
-      size = 9,
-      color = "black"
-    ),
-    legend.position = "none",
-    panel.spacing.x = unit(
-      0.8,
-      "lines"
-    ),
-    aspect.ratio = 0.5,
-    plot.margin = margin(
-      5,
-      5,
-      5,
-      5
-    )
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
   )
 
-print(p_clono_pheno)
+  # --- Add phenotype to longitudinal frequencies ---
+  clono_pheno <- clono_freq %>%
+    inner_join(
+      annotation %>%
+        distinct(key, TCRb, .keep_all = TRUE),
+      by = c("key", "TCRb")
+    ) %>%
+    arrange(key, TCRb, time_numeric)
 
-# --- Save plot ---
-ggsave(
-  filename = file.path(
-    annot_dir,
-    paste0("Single-cell_", compartment, "_", time, ".png")
-  ),
-  plot = p_clono_pheno,
-  width = 16,
-  height = 4.5,
-  units = "in",
-  dpi = 600,
-  bg = "white"
-)
+  assign(
+    paste0("clono_pheno_", time),
+    clono_pheno
+  )
+
+  # --- Plot longitudinal trajectories ---
+  p_clono_pheno <- ggplot(
+    clono_pheno,
+    aes(
+      x = time_numeric,
+      y = frequency,
+      group = interaction(key, TCRb),
+      color = manual.annotation
+    )
+  ) +
+    geom_line(
+      linewidth = 0.35,
+      alpha = 0.75
+    ) +
+    facet_wrap(
+      ~ manual.annotation,
+      ncol = 7
+    ) +
+    scale_x_continuous(
+      breaks = c(0, 14, 42, 140),
+      expand = expansion(mult = c(0.02, 0.02))
+    ) +
+    scale_y_log10(
+      breaks = 10^(-4:1),
+      labels = c(
+        "0.0001",
+        "0.001",
+        "0.01",
+        "0.1",
+        "1",
+        "10"
+      )
+    ) +
+    scale_color_manual(
+      values = manual_colors,
+      drop = FALSE
+    ) +
+    labs(
+      x = "Time",
+      y = "Clonotype frequency"
+    ) +
+    theme_classic() +
+    theme(
+      axis.title = element_text(
+        size = 10,
+        color = "black"
+      ),
+      axis.text = element_text(
+        size = 8,
+        color = "black"
+      ),
+      axis.line = element_line(
+        linewidth = 0.25,
+        color = "black"
+      ),
+      axis.ticks = element_line(
+        linewidth = 0.15,
+        color = "black"
+      ),
+      axis.ticks.length = unit(
+        1.5,
+        "pt"
+      ),
+      panel.border = element_rect(
+        fill = NA,
+        linewidth = 0.4,
+        color = "black"
+      ),
+      panel.grid.major.x = element_line(
+        linewidth = 0.3,
+        linetype = "dashed",
+        color = "grey85"
+      ),
+      panel.grid.minor.x = element_blank(),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      strip.background = element_blank(),
+      strip.text = element_text(
+        size = 9,
+        color = "black"
+      ),
+      legend.position = "none",
+      panel.spacing.x = unit(
+        0.8,
+        "lines"
+      ),
+      aspect.ratio = 0.5,
+      plot.margin = margin(
+        5,
+        5,
+        5,
+        5
+      )
+    )
+
+  print(p_clono_pheno)
+
+  # --- Save plot ---
+  ggsave(
+    filename = file.path(
+      traj_plot_dir,
+      paste0("Single-cell_", compartment, "_", time, ".png")
+    ),
+    plot = p_clono_pheno,
+    width = 16,
+    height = 4.5,
+    units = "in",
+    dpi = 600,
+    bg = "white"
+  )
+}
+rm(i, time)
 ```
 
 ## Plots
@@ -1179,8 +1182,8 @@ Dotplots phenotype
 # Set the order of identities in the Seurat object
 my.order <- c("CD8 TCM",
               "CD8 activated TCM-like",
-              "CD8 activated TEM",
-              "CD8 TEMRA KLRG1+",
+              "CD8 activated TEM GZMK+",
+              "CD8 LEF1+ ZNF683+",
               "CD8 TEMRA FGFBP2+",
               "CD8 TEMRA LILRB1+",
               "CD8 proliferating"
@@ -1205,10 +1208,12 @@ genes <- list(
                                "HLA-DRA",
                                "HLA-DPA1",
                                "HLA-DPB1"),
-  "KLRG1-associated" = c("KLRG1",
-                         "CX3CR1",
-                         "TBX21",
-                         "ZEB2"),
+  "LEF1+/ZNF683+" = c("ZNF683",
+                      "IKZF2",
+                      "KLRC2",
+                      "KLRC3",
+                      "NCR3",
+                      "XCL1"),
   "Cytotoxic effector" = c("FGFBP2",
                            "GZMB",
                            "GZMH",

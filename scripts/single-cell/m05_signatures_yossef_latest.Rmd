@@ -1,0 +1,153 @@
+---
+title: "m05_signatures_yossef_latest"
+author: "Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-01-08"
+output: html_document
+---
+
+# setup
+
+```{r setup, message=FALSE, warning=FALSE}
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+source(file.path(setup_dir, "setup.R"))
+source(file.path(setup_dir, "functions-yossef.R"))
+plots_list <- list()
+sample <- "yossef-cohort"
+batch_dir <- file.path(datapath, sample)
+int_dir <- file.path(datapath, "vhio136", "integrated")
+compartment <- "cd8_int_nn"
+```
+
+# load
+
+Yossef et al. cohort processed in m01_data_load_yossef_latest.Rmd.
+
+```{r}
+object <- readRDS(file.path(batch_dir, "seurat", "int_filt_annot.rds"))
+```
+
+# signatures
+
+iTAG signatures (m04_signatures_latest.Rmd) + TRTPBL + NeoTCRPBL, scored as in m04.
+
+```{r}
+signatures <- readRDS(file.path(int_dir, "markers", compartment, "itag_signatures.rds"))
+sigs <- fread(file.path(datapath_load, "outs", "signatures.tsv"), header = TRUE)
+sigs <- lapply(sigs, function(x) unique(na.omit(x)))
+signatures$TRTPBL <- sigs$TRTPBL
+signatures$Yossef_NeoTCR_PBL <- sigs$Yossef_NeoTCR_PBL
+object <- AddModuleScore_UCell(object, assay = "RNA", features = signatures, w_neg = 0.15, ncores = 8)
+dir.create(file.path(batch_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
+saveRDS(object, file.path(batch_dir, "seurat", "int_filt_annot_signatures.rds"))
+rm(sigs)
+```
+
+# performance
+
+Overall performance of the transcriptomic signatures.
+
+```{r, warning=FALSE}
+g1 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_pre_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors_yossef
+  )
+g2 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_post1_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors_yossef
+  )
+g3 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_post2_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors_yossef
+  )
+g4 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_all_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors_yossef
+)
+g5 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "Yossef_NeoTCR_PBL_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Non-reactive")),
+  category_colors = category_colors_yossef
+)
+p <- wrap_plots(list(g1, g2, g3, g4, g5), ncol = 5)
+plots_list[["iTAG_signature_on_Yossef_yield"]] <- p
+rm(g1, g2, g3, g4, g5, p)
+```
+
+The number of TCRs captured by iTAG signatures in the Yossef et al. cohort.
+
+```{r}
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+performance_plots <- list()
+for (i in unique(object$patient)) {
+  res <- plot_reactive_top_yossef(object,
+                                  sample = i,
+                                  pivot_cols = signatures_to_compare,
+                                  top_n = top_clonotypes
+                                  )
+  performance_plots[[i]] <- res$plot
+}
+plots_list[["iTAG_signature_on_Yossef_capture"]] <- wrap_plots(performance_plots, ncol = 4)
+rm(performance_plots, res, i)
+```
+
+Reactive TCRs identified vs interrogated TCRs.
+
+```{r}
+set.seed(SEED)
+performance_plots <- list()
+for (i in unique(object$patient)) {
+  performance_plots[[i]] <- plot_reactive_tcrs_vs_tested_yossef(object,
+                                                                step = 25,
+                                                                pivot_cols = signatures_to_compare,
+                                                                sample_id = i
+                                                                )
+}
+plots_list[["iTAG_signature_on_Yossef_curves"]] <- wrap_plots(performance_plots, ncol = 4)
+rm(performance_plots, i)
+```
+
+ROC curves.
+
+```{r}
+auc_plots <- list()
+for (i in unique(object$patient)) {
+  auc_plots[[i]] <- plot_ROC_curves_yossef(object,
+                                           pivot_cols = signatures_to_compare,
+                                           sample_id = i
+                                           )
+}
+plots_list[["iTAG_signature_on_Yossef_auc"]] <- wrap_plots(auc_plots, ncol = 4)
+rm(auc_plots, i)
+```
+
+Save plots.
+
+```{r, warning=FALSE}
+plot_dir <- file.path(batch_dir, "plots")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+for (i in names(plots_list)) {
+  pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)
+  print(plots_list[[i]])
+  dev.off()
+}
+rm(plot_dir)
+```
+
+```{r, warning=FALSE}
+print("Plots saved successfully.")
+```

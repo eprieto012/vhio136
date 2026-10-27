@@ -13,7 +13,10 @@ The computational environment is fully pinned:
 ## Repository layout
 
 ```
-scripts/        R Markdown analyses (m01 → m04) and interactive-R.sh
+scripts/        interactive-R.sh, run_rmd.sh (SLURM launcher)
+  single-cell/  R Markdown analyses (m01 → m05)
+  tcr-library/  TCR library analyses
+  bulk/         bulk analyses
 setup/          setup.R (paths, seeds, threads, Python), libraries.R, colors.R, functions.R
 setup/refs/     ProjecTILs reference maps (downloaded automatically, not tracked)
 renv_vhio136/   renv project: renv.lock, activate.R, settings.json, env_lock/
@@ -103,28 +106,30 @@ data/
 │   ├── pbl_raw_RIO136.tsv       # bulk TCRβ repertoire of PBLs (Fig. 3f)
 │   ├── color_TCR.IDs.txt
 │   ├── signatures.tsv
+│   ├── yossef_reactivity.tsv    # reactive TCRs reported by Yossef et al.
 │   ├── heatmap_genes.csv        # gene categories for the iTAG heatmap (m04)
 │   ├── vdjdb/vdjdb_rio136_{tra,trb,paired}.tsv
 │   └── iedb/receptor_table_export_1713292478.xlsx
-└── public/
-    └── int_filt_annot.rds       # processed Seurat object of Yossef et al. (dbGaP), used in m04
+└── yossef-cohort/               # Cell Ranger outputs of Yossef et al. (dbGaP), one folder per sample (only these folders)
 ```
 
 ProjecTILs human reference maps (`CD4T_human_ref_v1.rds`, `CD8T_human_ref_v1.rds`) are downloaded from figshare into `setup/refs/` the first time `m02` runs.
 
 ## 3. Run the analyses
 
-Run the R Markdown files in order from R started with `interactive-R.sh`:
+Run the R Markdown files in `scripts/single-cell/` in order, either on SLURM from the project root (`sbatch -J <name> scripts/run_rmd.sh scripts/single-cell/<file>.Rmd`) or from R started with `interactive-R.sh`:
 
 | Step | Script | Main outputs |
 |---|---|---|
 | 1a | `m01_data_load_rootpath_latest.Rmd` | `rootpath/seurat/` (`soupX_rootpath.rds`, `SCT_rootpath.rds`), `rootpath/plots/` |
 | 1b | `m01_data_load_vhio_latest.Rmd` | `vhio/seurat/` (`soupX_vhio.rds`, `SCT_vhio.rds`), `vhio/plots/` |
+| 1c | `m01_data_load_yossef_latest.Rmd` | `results/yossef-cohort/seurat/` (`soupX_yossef.rds`, `int_filt_annot.rds`), `results/yossef-cohort/plots/` (QC) |
 | 2 | `m02_data_integration_latest.Rmd` | `integrated/seurat/` (`cd8_int*.rds`, `cd4_int.rds`) |
 | 3 | `m03_plots_analyses_latest.Rmd` | `integrated/plots/manuscript/` (Fig. 3, S7–S9), `integrated/traj/` |
-| 4 | `m04_signatures_latest.Rmd` | `integrated/markers/` (iTAG signatures and plots), updated `integrated/seurat/cd8_int_nn.rds`, `integrated/seurat/public_yossef_et_al_int_filt_annot.rds` |
+| 4 | `m04_signatures_latest.Rmd` | `integrated/markers/` (iTAG signatures and plots), updated `integrated/seurat/cd8_int_nn.rds` |
+| 5 | `m05_signatures_yossef_latest.Rmd` | `results/yossef-cohort/seurat/int_filt_annot_signatures.rds`, `results/yossef-cohort/plots/` (iTAG performance in Yossef et al.) |
 
-All outputs are written under `results/vhio136/`:
+Steps 1a–1c are independent; 5 needs 1c and 4. Outputs of the Yossef et al. cohort go to `results/yossef-cohort/`, all others under `results/vhio136/`:
 
 ```
 results/vhio136/
@@ -142,7 +147,7 @@ results/vhio136/
 ```
 
 ```r
-rmarkdown::render("../scripts/m01_data_load_rootpath_latest.Rmd")
+rmarkdown::render("../scripts/single-cell/m01_data_load_rootpath_latest.Rmd", knit_root_dir = getwd())
 ```
 
 ## Reproducibility notes
@@ -151,6 +156,3 @@ rmarkdown::render("../scripts/m01_data_load_rootpath_latest.Rmd")
 - BLAS/OpenMP threads are limited to 1. Results should be identical on the same platform; small numerical differences (e.g. UMAP coordinates) are possible on different CPUs.
 - `renv.lock` records `future` 1.70.0 with `future.apply` 1.21.0, which declares `future >= 1.80.0`. This is the combination the analyses were run with and it loads correctly; it is kept on purpose.
 
-## Known limitations
-
-- The Yossef et al. comparison in `m04` starts from a processed Seurat object (`data/public/int_filt_annot.rds`); the pipeline that generated it from dbGaP data is not included here.

@@ -29,13 +29,13 @@ reactivity_colors <- c(
   "NA" = "gray80"
 )
 manual_colors <- c(
-  "CD8 TCM"                = "#0B6F61",
-  "CD8 activated TCM-like" = "#84D8C5",
-  "CD8 activated TEM"      = "#E45C95",
-  "CD8 TEMRA KLRG1+"       = "#00A6D6",
-  "CD8 TEMRA FGFBP2+"      = "#123FD1",
-  "CD8 TEMRA LILRB1+"      = "#78B7F9",
-  "CD8 proliferating"      = "#4B1D73"
+  "CD8 TCM"                 = "#0B6F61",
+  "CD8 activated TCM-like"  = "#84D8C5",
+  "CD8 activated TEM GZMK+" = "#E45C95",
+  "CD8 LEF1+ ZNF683+"       = "#B08BCE",
+  "CD8 TEMRA FGFBP2+"       = "#123FD1",
+  "CD8 TEMRA LILRB1+"       = "#78B7F9",
+  "CD8 proliferating"       = "#4B1D73"
 )
 clone_colors <- c(
   "Single (0 < X <= 1)" = "gray80",
@@ -74,6 +74,19 @@ signature_colors <- c(
   "iTAG_post6_UCell" = "goldenrod",
   "iTAG_all_UCell" = "green2"
 )
+category_colors_yossef <- c(
+  "Reactive" = "darkred",
+  "Non-reactive" = "gray15",
+  "CD8.TEMRA" = "#8A2BE2",
+  "CD8.EM" = "#FF69B4",
+  "CD8.TEX" = "black",
+  "Non-hits"  = "#8C6D5C",
+  "NaiveLike" = "#7A8F6B",
+  "NA"        = "#C6B8A6",
+  "Viral_databases" = "#2F6F8F",
+  "Non-reactive;Viral_databases" = "#7FAF9B"
+)
+
 # --- Configure plotting style and visualization settings ---
 theme_ic <- theme_bw(base_size = 11) +
   theme(
