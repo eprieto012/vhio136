@@ -145,7 +145,7 @@ message("A total of ", length(unique(unlist(strsplit(na.omit(obj@meta.data$id), 
 
 ```{r}
 # --- Load TCR library metadata ---
-tcr_lib <- fread(file.path(datapath_load, "outs/tcr_lib_annotated.txt"))
+tcr_lib <- fread(file.path(aux_dir, "tcr-library", "tcr_library_annotated.txt"))
 tcr_lib_dt <- as.data.table(copy(tcr_lib))
 if (!"criteria_simplified" %in% colnames(tcr_lib_dt) && "tag_combination_controls" %in% colnames(tcr_lib_dt)) {
   tcr_lib_dt[, criteria_simplified := tag_combination_controls]
@@ -372,7 +372,7 @@ rm(chains_data)
 Fresh biopsy
 
 ```{r}
-biopsy_trb <- fread(file.path(datapath_load, "outs/p136-Tfrozen_TCRB in frame.tsv")) %>%
+biopsy_trb <- fread(file.path(datapath_load, "bulk", "tumor", "p136-Tfrozen_TCRB in frame.tsv")) %>%
   transmute(tcrb = str_c(aminoAcid, vMaxResolved, jMaxResolved, sep = "_")) %>%
   mutate(
     tcrb = str_replace_all(
@@ -411,7 +411,7 @@ Epitope species: "CMV", "EBV", "HCV", "HIV-1", "HomoSapiens", "InfluenzaA", "SAR
 ```{r}
 obj@meta.data$cell_id <- rownames(obj@meta.data)
 # TCRa
-tra_vdjdb_orig <- fread(file.path(datapath_load, "outs/vdjdb/vdjdb_rio136_tra.tsv"), header = T)
+tra_vdjdb_orig <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_tra.tsv"), header = T)
 tra_vdjdb <- tra_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(tra_vdjdb) <- c("tra", "v_gene", "j_gene", "epitope_gene", "epitope_species")
 tra_vdjdb$v_gene <- clean_multi_gene(tra_vdjdb$v_gene)
@@ -425,7 +425,7 @@ tra_vdjdb <- tra_vdjdb %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "VDJdb_TRA")
 # TCRb
-trb_vdjdb_orig <- fread(file.path(datapath_load, "outs/vdjdb/vdjdb_rio136_trb.tsv"), header = T)
+trb_vdjdb_orig <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_trb.tsv"), header = T)
 trb_vdjdb <- trb_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(trb_vdjdb) <- c("trb", "v_gene", "j_gene", "epitope_gene", "epitope_species")
 trb_vdjdb$v_gene <- clean_multi_gene(trb_vdjdb$v_gene)
@@ -440,7 +440,7 @@ trb_vdjdb <- trb_vdjdb %>%
   mutate(match = "VDJdb_TRB")
 # TCR
 # Verify that the TRB+TRA sequences described at https://vdjdb.cdr3.net/search matches the TRB+TRA of the single-cell data (reconstructed TCR). To do this, download the data set with the CDR3 paired only option, reconstruct the TCR, and check for a match.
-vdjdb_paired <- fread(file.path(datapath_load, "outs/vdjdb/vdjdb_rio136_paired.tsv"), header = T)
+vdjdb_paired <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_paired.tsv"), header = T)
 complex.id <- unique(vdjdb_paired$complex.id)
 vdjdb_paired_tcr <- list()
 for (i in complex.id) {
@@ -482,7 +482,7 @@ HLA-matched viral TCR https://iedb.org/
 
 ```{r, warning=FALSE, message=FALSE}
 # Download the whole database and filtered for HLA-compatible entries for both tcrb or tcra+tcrb.
-tcr_iedb_data <- readxl::read_excel(file.path(datapath_load, "outs/iedb/receptor_table_export_1713292478.xlsx"))
+tcr_iedb_data <- readxl::read_excel(file.path(aux_dir, "viral-databases", "iedb", "iedb_receptor_export_2024-04-16.xlsx"))
 tcr_iedb_data <- as.data.frame(tcr_iedb_data)
 tcr_iedb_data <- tcr_iedb_data %>% select(c("MHC Allele Names", "Type...13", "CDR3 Curated...24", "Type...42", "CDR3 Curated...53", "Source Organism", "Source Molecule"))
 tcr_iedb_data <- subset(tcr_iedb_data, tcr_iedb_data$`Source Organism` %in% c("Human herpesvirus 5 (Human cytomegalovirus)",
@@ -555,12 +555,25 @@ obj@meta.data <- obj@meta.data %>%
 rm(tcr_vdjdb, tra_iedb, tra_vdjdb, trb_iedb, trb_vdjdb, viral_info)
 ```
 
+Merge the viral specificity into `reactivity`, so that it is defined once here and used as-is downstream (m03, m04). There is no overlap between epitope_species and reactive IDs, except for ID.198, which is annotated as non-reactive and matches EBV; these cells are annotated as EBV.
+
+```{r}
+table(
+  reactivity = !is.na(obj@meta.data$reactivity),
+  viral_epitope = !is.na(obj@meta.data$epitope_species)
+)
+idx <- !is.na(obj@meta.data$epitope_species)
+obj@meta.data$reactivity[idx] <- as.character(obj@meta.data$epitope_species[idx])
+table(obj@meta.data$reactivity, useNA = "ifany")
+rm(idx)
+```
+
 # signatures
 
 Cell-cycle score + Yossef's gene-signature scores for tumor-reactive PBLs @ Cancer Cell Table S5
 
 ```{r}
-signatures <- fread(file.path(datapath_load, "outs/signatures.tsv"), header = TRUE)
+signatures <- fread(file.path(aux_dir, "signatures", "published_signatures.tsv"), header = TRUE)
 sigs <- lapply(signatures, function(x) unique(na.omit(x)))
 sigs <- c(
   sigs,
@@ -571,7 +584,7 @@ sigs <- c(
 )
 signature.names <- paste0(names(sigs), "_UCell")
 set.seed(SEED)
-obj <- AddModuleScore_UCell(obj, assay = "SCT", features = sigs, ncores=REPRO_NCORES)
+obj <- AddModuleScore_UCell(obj, assay = "RNA", features = sigs, ncores=REPRO_NCORES)
 rm(sigs, signature.names)
 ```
 
@@ -602,7 +615,7 @@ for (i in seq_along(object_files_vh)) {
   tcr$d_gene <- clean_multi_gene(tcr$d_gene)
   tcr$j_gene <- clean_multi_gene(tcr$j_gene)
   tcr$c_gene <- clean_multi_gene(tcr$c_gene)
-  data_repertoire_vhio[[as.character(object_tags_rp[[i]])]] <- tcr
+  data_repertoire_vhio[[as.character(object_tags_vhio[[i]])]] <- tcr
 }
 data_repertoire <- c(data_repertoire_rp, data_repertoire_vhio)
 samples <- c(object_files_rp, object_files_vh)
@@ -670,13 +683,12 @@ Step 3. Identify variable features across all datasets. Also add variable featur
 obj.cd8.list <- SplitObject(obj.cd8, split.by = "sample")
 obj.cd8.list <- lapply(obj.cd8.list, function(x) {FindVariableFeatures.STACAS(x, nfeat = 1500, genesBlockList = genes.blacklist.default$Hs)})
 varfeat <- SelectIntegrationFeatures(object.list = obj.cd8.list, nfeatures = 1500)
-var_projecTILs <- list()
-for (i in c('CD4T', 'CD8T')) {
-  ref.use <- load.reference.map(ref = paste0(project_dir, "/setup/refs/", paste0(i, "_human_ref_v1.rds")))
-  file.path(project_dir, "setup", "refs", "CD8T_human_ref_v1.rds")
-  var_projecTILs[[i]] <- row.names(ref.use@assays$integrated)
-}
-varfeat <- unique(c(varfeat, var_projecTILs$CD8T))
+# ProjecTILs reference matching the compartment prefix (cd8_int -> CD8T)
+compartment <- "cd8_int"
+ref_name <- paste0(toupper(sub("_.*", "", compartment)), "T")
+ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", paste0(ref_name, "_human_ref_v1.rds")))
+varfeat <- unique(c(varfeat, row.names(ref.use@assays$integrated)))
+rm(ref.use, ref_name)
 ```
 
 Step 4. Loop STACAS pipeline for different annotations:
@@ -692,7 +704,7 @@ ndim <- 8
 res <- 0.75
 set.seed(SEED)
 obj.cd8.int <- Run.STACAS(obj.cd8.list,
-                      assay = rep("SCT", 12),
+                      assay = rep("SCT", length(obj.cd8.list)),
                       new.assay.name = "STACAS",
                       reference = NULL,
                       max.seed.objects = ndim,
@@ -706,7 +718,7 @@ obj.cd8.int <- Run.STACAS(obj.cd8.list,
                       alpha = 0.7,
                       anchor.coverage = 0.5,
                       correction.scale = 1.5,
-                      cell.labels = "functional.cluster.conf",
+                      cell.labels = "functional.cluster_stacas",
                       label.confidence = 0.95,
                       scale.data = FALSE,
                       hclust.method = "complete",
@@ -836,7 +848,6 @@ CD8 activated TCM-like = recently activated central-memory-like cells; still low
 CD8 activated TEM = activated effector-memory cells; intermediate cytotoxicity; GZMK/GZMA with HLA-II activation signature.
 CD8 TEMRA FGFBP2+ = highly cytotoxic terminal effector/TEMRA cells; strong FGFBP2/GZMB/GZMH/GNLY/PRF1/KLRD1/TBX21 program.
 CD8 TEMRA LILRB1+ = terminal cytotoxic TEMRA-like cells with inhibitory/NK-like features; LILRB1/FCGR3A/ADGRG1/ZEB2 with GNLY/GZMB.
-CD8 TEMRA KLRG1+ = terminal cytotoxic TEMRA-like cells with senescence/NK-like features; KLRG1/GZMB/GNLY with inhibitory receptors.
 Proliferating CD8 T cells = cycling activated CD8 cells; proliferation-dominant rather than purely cytotoxic; MKI67/PCLAF/STMN1/MCM/NUSAP1-high.
 
 ```{r}
@@ -862,15 +873,6 @@ obj.cd8.nn$manual.annotation <- factor(
     "CD8 TEMRA LILRB1+",
     "CD8 proliferating"
   )
-)
-manual_colors <- c(
-  "CD8 TCM"                = "#0B6F61",
-  "CD8 activated TCM-like" = "#84D8C5",
-  "CD8 activated TEM GZMK+" = "#E45C95",
-  "CD8 LEF1+ ZNF683+"      = "#B08BCE",
-  "CD8 TEMRA FGFBP2+"      = "#123FD1",
-  "CD8 TEMRA LILRB1+"      = "#78B7F9",
-  "CD8 proliferating"      = "#4B1D73"
 )
 plots_list[["IC04_cd8_int_nn_manual_annotation"]] <- DimPlot(
   obj.cd8.nn,
@@ -1062,12 +1064,12 @@ Step 3. Identify variable features across all datasets. Also add variable featur
 obj.cd4.list <- SplitObject(obj.cd4, split.by = "sample")
 obj.cd4.list <- lapply(obj.cd4.list, function(x) {FindVariableFeatures.STACAS(x, nfeat = 1500, genesBlockList = genes.blacklist.default$Hs)})
 varfeat <- SelectIntegrationFeatures(object.list = obj.cd4.list, nfeatures = 1500)
-var_projecTILs <- list()
-for (i in c('CD4T', 'CD8T')) {
-  ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", paste0(i, "_human_ref_v1.rds")))
-  var_projecTILs[[i]] <- row.names(ref.use@assays$integrated)
-}
-varfeat <- unique(c(varfeat, var_projecTILs$CD4T))
+# ProjecTILs reference matching the compartment prefix (cd4_int -> CD4T)
+compartment <- "cd4_int"
+ref_name <- paste0(toupper(sub("_.*", "", compartment)), "T")
+ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", paste0(ref_name, "_human_ref_v1.rds")))
+varfeat <- unique(c(varfeat, row.names(ref.use@assays$integrated)))
+rm(ref.use, ref_name)
 ```
 
 Step 4. Loop STACAS pipeline for different annotations:
@@ -1083,7 +1085,7 @@ ndim <- 8
 res <- 0.75
 set.seed(SEED)
 obj.cd4.int <- Run.STACAS(obj.cd4.list,
-                      assay = rep("SCT", 12),
+                      assay = rep("SCT", length(obj.cd4.list)),
                       new.assay.name = "STACAS",
                       reference = NULL,
                       max.seed.objects = ndim,
@@ -1097,7 +1099,7 @@ obj.cd4.int <- Run.STACAS(obj.cd4.list,
                       alpha = 0.7,
                       anchor.coverage = 0.5,
                       correction.scale = 1.5,
-                      cell.labels = "functional.cluster.conf",
+                      cell.labels = "functional.cluster_stacas",
                       label.confidence = 0.95,
                       scale.data = FALSE,
                       hclust.method = "complete",

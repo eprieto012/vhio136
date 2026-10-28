@@ -1,0 +1,1006 @@
+id	criteria_simplified	reactivity
+ID.001	PD1 | Expanding	NA
+ID.002	PD1 | Expanding	No
+ID.003	PD1	NA
+ID.004	PD1	NA
+ID.005	PD1	NA
+ID.006	PD1	NA
+ID.007	PD1	NA
+ID.008	PD1	NA
+ID.009	PD1	NA
+ID.010	PD1	NA
+ID.011	PD1 | Expanding	NA
+ID.012	PD1	Yes
+ID.013	PD1	NA
+ID.014	PD1	NA
+ID.015	PD1	NA
+ID.016	PD1	Yes
+ID.017	PD1	NA
+ID.018	PD1	NA
+ID.019	PD1	NA
+ID.020	PD1	NA
+ID.021	PD1 | Expanding	NA
+ID.022	PD1 | Expanding	NA
+ID.023	PD1	Yes
+ID.024	PD1 | Tumor	Yes
+ID.025	PD1	NA
+ID.026	PD1 | Expanding	NA
+ID.027	PD1	NA
+ID.028	PD1	NA
+ID.029	PD1	NA
+ID.030	PD1	NA
+ID.031	PD1 | Expanding	Yes
+ID.032	PD1	NA
+ID.033	PD1	NA
+ID.034	PD1 | Expanding	NA
+ID.035	PD1 | Expanding	No
+ID.036	PD1 | Tumor | Expanding	NA
+ID.037	PD1	NA
+ID.038	PD1 | Expanding	NA
+ID.039	PD1 | Tumor	NA
+ID.040	PD1	NA
+ID.041	PD1	NA
+ID.042	PD1	NA
+ID.043	PD1 | Tumor	NA
+ID.044	PD1 | Tumor	NA
+ID.045	PD1 | Expanding	NA
+ID.046	PD1	NA
+ID.047	PD1	NA
+ID.048	PD1 | Expanding	NA
+ID.049	PD1 | Expanding	NA
+ID.050	PD1 | Expanding	NA
+ID.051	PD1	NA
+ID.052	PD1 | Expanding	NA
+ID.053	PD1 | Expanding	NA
+ID.054	PD1 | Expanding	NA
+ID.055	PD1	NA
+ID.056	PD1 | Expanding	No
+ID.057	PD1 | Expanding	No
+ID.058	PD1 | Expanding	NA
+ID.059	PD1 | Expanding	NA
+ID.060	PD1	Yes
+ID.061	PD1	NA
+ID.062	PD1	NA
+ID.063	PD1 | Expanding	NA
+ID.064	PD1 | Expanding	NA
+ID.065	PD1	NA
+ID.066	PD1	NA
+ID.067	PD1	NA
+ID.068	PD1	NA
+ID.069	PD1 | Expanding	NA
+ID.070	PD1 | Tumor	NA
+ID.071	PD1	NA
+ID.072	PD1	NA
+ID.073	PD1	NA
+ID.074	PD1	No
+ID.075	PD1 | Tumor	NA
+ID.076	PD1 | Tumor	NA
+ID.077	PD1	NA
+ID.078	PD1	NA
+ID.079	PD1 | Expanding	NA
+ID.080	PD1	NA
+ID.081	PD1 | Expanding	NA
+ID.082	PD1 | Tumor	Auto-reactive
+ID.083	PD1 | Expanding	Yes
+ID.084	PD1	NA
+ID.085	PD1	NA
+ID.086	PD1	NA
+ID.087	PD1 | Tumor	NA
+ID.088	PD1	NA
+ID.089	PD1	NA
+ID.090	PD1	NA
+ID.091	PD1	NA
+ID.092	PD1	NA
+ID.093	PD1 | Expanding	NA
+ID.094	PD1 | Expanding	Yes
+ID.095	PD1 | Expanding	NA
+ID.096	PD1	NA
+ID.097	PD1	NA
+ID.098	PD1 | Expanding	NA
+ID.099	PD1 | Expanding	No
+ID.100	PD1 | Tumor	NA
+ID.101	PD1 | Tumor	NA
+ID.102	PD1	NA
+ID.103	PD1 | Expanding	NA
+ID.104	PD1 | Expanding	NA
+ID.105	PD1 | Tumor	NA
+ID.106	PD1	NA
+ID.107	PD1 | Expanding	NA
+ID.108	PD1	NA
+ID.109	PD1 | Expanding	NA
+ID.110	PD1 | Expanding	NA
+ID.111	PD1 | Expanding	NA
+ID.112	PD1	NA
+ID.113	PD1 | Tumor	NA
+ID.114	PD1 | Expanding	NA
+ID.115	PD1	NA
+ID.116	PD1 | Expanding	NA
+ID.117	PD1 | Expanding	NA
+ID.118	PD1 | Tumor	NA
+ID.119	PD1	NA
+ID.120	PD1	NA
+ID.121	PD1 | Tumor	NA
+ID.122	PD1	NA
+ID.123	PD1 | Expanding	NA
+ID.124	PD1 | Expanding	NA
+ID.125	PD1 | Expanding	NA
+ID.126	PD1	NA
+ID.127	PD1 | Expanding	NA
+ID.128	PD1	NA
+ID.129	PD1 | Expanding	NA
+ID.130	PD1 | Expanding	NA
+ID.131	PD1 | Tumor	No
+ID.132	PD1	NA
+ID.133	PD1 | Expanding	NA
+ID.134	PD1	NA
+ID.135	PD1 | Expanding	NA
+ID.136	PD1 | Tumor	No
+ID.137	PD1 | Expanding	NA
+ID.138	PD1 | Expanding	NA
+ID.139	PD1 | Expanding	NA
+ID.140	PD1	NA
+ID.141	PD1 | Expanding	NA
+ID.142	PD1	NA
+ID.143	PD1 | Expanding	Yes
+ID.144	PD1	NA
+ID.145	PD1 | Expanding	Yes
+ID.146	PD1	Yes
+ID.147	PD1 | Tumor	NA
+ID.148	PD1 | Expanding	Auto-reactive
+ID.149	PD1	NA
+ID.150	PD1	NA
+ID.151	PD1 | Tumor	NA
+ID.152	PD1 | Tumor	NA
+ID.153	PD1	NA
+ID.154	PD1 | Expanding	NA
+ID.155	PD1 | Expanding	NA
+ID.156	PD1 | Expanding	NA
+ID.157	PD1 | Expanding	NA
+ID.158	PD1	NA
+ID.159	PD1 | Expanding	Yes
+ID.160	PD1 | Expanding	NA
+ID.161	PD1	NA
+ID.162	PD1 | Tumor	NA
+ID.163	PD1	NA
+ID.164	PD1 | Expanding	NA
+ID.165	PD1	NA
+ID.166	PD1	NA
+ID.167	PD1	NA
+ID.168	PD1 | Tumor	NA
+ID.169	PD1 | Tumor	NA
+ID.170	PD1 | Expanding	NA
+ID.171	PD1 | Expanding	NA
+ID.172	PD1 | Tumor	NA
+ID.173	PD1 | Expanding	NA
+ID.174	PD1	NA
+ID.175	PD1 | Expanding	NA
+ID.176	PD1	NA
+ID.177	PD1 | Tumor	NA
+ID.178	PD1 | Expanding	NA
+ID.179	PD1 | Tumor	NA
+ID.180	PD1 | Tumor	NA
+ID.181	PD1	NA
+ID.182	PD1	NA
+ID.183	PD1 | Expanding	NA
+ID.184	PD1 | Expanding	NA
+ID.185	PD1 | Expanding	Yes
+ID.186	PD1	NA
+ID.187	PD1 | Expanding	Yes
+ID.188	PD1 | Expanding	NA
+ID.189	PD1 | Expanding	NA
+ID.190	PD1	NA
+ID.191	PD1	NA
+ID.192	PD1 | Tumor	NA
+ID.193	PD1 | Tumor	NA
+ID.194	PD1 | Expanding	NA
+ID.195	PD1 | Expanding	Auto-reactive
+ID.196	PD1	NA
+ID.197	PD1	NA
+ID.198	PD1	No
+ID.199	PD1 | Expanding	NA
+ID.200	PD1 | Expanding	NA
+ID.201	PD1 | Tumor	NA
+ID.202	PD1 | Tumor	NA
+ID.203	PD1 | Expanding	NA
+ID.204	PD1 | Expanding	NA
+ID.205	PD1	NA
+ID.206	PD1 | Tumor	NA
+ID.207	PD1 | Expanding	NA
+ID.208	PD1 | Expanding	NA
+ID.209	PD1 | Expanding	NA
+ID.210	PD1 | Tumor	NA
+ID.211	PD1	NA
+ID.212	PD1	NA
+ID.213	PD1 | Tumor	NA
+ID.214	PD1	Auto-reactive
+ID.215	PD1 | Tumor	NA
+ID.216	PD1 | Expanding	Auto-reactive
+ID.217	PD1 | Expanding	No
+ID.218	PD1 | Expanding	NA
+ID.219	PD1 | Tumor	NA
+ID.220	PD1	NA
+ID.221	PD1 | Expanding	NA
+ID.222	PD1 | Tumor	NA
+ID.223	PD1	NA
+ID.224	PD1	NA
+ID.225	PD1 | Tumor	NA
+ID.226	PD1 | Expanding	NA
+ID.227	PD1	NA
+ID.228	PD1	NA
+ID.229	PD1	NA
+ID.230	PD1	NA
+ID.231	PD1	NA
+ID.232	PD1 | Expanding	Auto-reactive
+ID.233	Frequent	NA
+ID.234	Frequent	NA
+ID.235	None	NA
+ID.236	PD1	NA
+ID.237	Frequent	NA
+ID.238	Frequent	NA
+ID.239	Expanding	NA
+ID.240	Frequent	NA
+ID.241	Frequent	NA
+ID.242	Frequent	NA
+ID.243	Expanding	NA
+ID.244	Frequent	NA
+ID.245	Frequent	NA
+ID.246	Frequent	NA
+ID.247	PD1	Auto-reactive
+ID.248	Tumor	NA
+ID.249	Frequent	NA
+ID.250	Frequent	NA
+ID.251	Tumor	NA
+ID.252	None	NA
+ID.253	Frequent	NA
+ID.254	Frequent	NA
+ID.255	Frequent	NA
+ID.256	Frequent	NA
+ID.257	Frequent	NA
+ID.258	Tumor	NA
+ID.259	PD1 | Tumor	NA
+ID.260	Frequent	NA
+ID.261	PD1	NA
+ID.262	PD1	NA
+ID.263	Frequent	NA
+ID.264	Frequent	NA
+ID.265	PD1 | Tumor	NA
+ID.266	Frequent	NA
+ID.267	None	NA
+ID.268	Frequent	NA
+ID.269	Expanding	NA
+ID.270	Expanding	NA
+ID.271	PD1	NA
+ID.272	PD1 | Tumor	No
+ID.273	PD1 | Tumor	NA
+ID.274	Frequent	NA
+ID.275	PD1	NA
+ID.276	PD1	NA
+ID.277	Frequent	NA
+ID.278	Expanding	NA
+ID.279	PD1 | Tumor	NA
+ID.280	Frequent	NA
+ID.281	Frequent	NA
+ID.282	Expanding	NA
+ID.283	Tumor	NA
+ID.284	PD1	NA
+ID.285	PD1	No
+ID.286	Frequent	NA
+ID.287	PD1	NA
+ID.288	PD1	NA
+ID.289	Frequent	NA
+ID.290	Frequent	NA
+ID.291	Frequent	NA
+ID.292	Expanding	NA
+ID.293	Expanding	NA
+ID.294	Tumor	NA
+ID.295	Expanding	Auto-reactive
+ID.296	Expanding	NA
+ID.297	PD1	NA
+ID.298	Frequent	NA
+ID.299	PD1 | Expanding	NA
+ID.300	Frequent	NA
+ID.301	Frequent	NA
+ID.302	Frequent	NA
+ID.303	PD1 | Tumor	NA
+ID.304	Frequent	NA
+ID.305	Frequent	NA
+ID.306	PD1	NA
+ID.307	Frequent	NA
+ID.308	Frequent	NA
+ID.309	Tumor	NA
+ID.310	Expanding	NA
+ID.311	PD1	NA
+ID.312	Frequent	NA
+ID.313	Frequent	NA
+ID.314	PD1 | Tumor	NA
+ID.315	Expanding	NA
+ID.316	Expanding	NA
+ID.317	PD1 | Expanding	NA
+ID.318	PD1	NA
+ID.319	PD1 | Expanding	NA
+ID.320	Frequent	NA
+ID.321	Frequent	NA
+ID.322	Frequent	NA
+ID.323	Expanding	NA
+ID.324	Tumor	NA
+ID.325	Frequent	NA
+ID.326	PD1	NA
+ID.327	PD1	NA
+ID.328	PD1	NA
+ID.329	Tumor	NA
+ID.330	Expanding	NA
+ID.331	Frequent	NA
+ID.332	Frequent	NA
+ID.333	Expanding	NA
+ID.334	Frequent	NA
+ID.335	PD1 | Tumor	NA
+ID.336	Frequent	NA
+ID.337	Frequent	NA
+ID.338	Frequent	NA
+ID.339	PD1	NA
+ID.340	Expanding	NA
+ID.341	Frequent	NA
+ID.342	Frequent	NA
+ID.343	PD1 | Expanding	NA
+ID.344	Frequent	NA
+ID.345	Expanding	NA
+ID.346	Frequent	NA
+ID.347	Frequent	Yes
+ID.348	Frequent	NA
+ID.349	Frequent	NA
+ID.350	PD1	NA
+ID.351	Frequent	NA
+ID.352	Frequent	NA
+ID.353	Frequent	NA
+ID.354	Expanding	NA
+ID.355	PD1	NA
+ID.356	Frequent	NA
+ID.357	Frequent	NA
+ID.358	PD1 | Expanding	NA
+ID.359	Frequent	NA
+ID.360	Frequent	NA
+ID.361	PD1	NA
+ID.362	Frequent	NA
+ID.363	Frequent	NA
+ID.364	Frequent	NA
+ID.365	Frequent	NA
+ID.366	PD1 | Tumor	NA
+ID.367	Frequent	NA
+ID.368	Frequent	NA
+ID.369	Frequent	NA
+ID.370	Expanding	NA
+ID.371	Expanding	NA
+ID.372	Expanding	NA
+ID.373	Frequent	NA
+ID.374	Tumor	NA
+ID.375	Expanding	NA
+ID.376	Expanding	NA
+ID.377	None	NA
+ID.378	PD1 | Expanding	NA
+ID.379	Frequent	NA
+ID.380	Frequent	NA
+ID.381	Expanding	NA
+ID.382	PD1	NA
+ID.383	PD1 | Tumor	NA
+ID.384	Frequent	NA
+ID.385	PD1	NA
+ID.386	Frequent	NA
+ID.387	Frequent	NA
+ID.388	PD1	NA
+ID.389	Frequent	NA
+ID.390	Tumor	NA
+ID.391	PD1	NA
+ID.392	Frequent	NA
+ID.393	Expanding	NA
+ID.394	None	NA
+ID.395	PD1 | Expanding	NA
+ID.396	PD1	NA
+ID.397	Tumor	NA
+ID.398	PD1 | Tumor	NA
+ID.399	Tumor	NA
+ID.400	Frequent	NA
+ID.401	Expanding	NA
+ID.402	Frequent	NA
+ID.403	PD1 | Expanding	NA
+ID.404	Expanding	NA
+ID.405	Tumor	NA
+ID.406	Frequent	NA
+ID.407	Frequent	NA
+ID.408	Tumor	NA
+ID.409	Frequent	NA
+ID.410	Frequent	NA
+ID.411	None	NA
+ID.412	Frequent	NA
+ID.413	Frequent	NA
+ID.414	PD1	NA
+ID.415	Frequent	NA
+ID.416	Frequent	NA
+ID.417	PD1	NA
+ID.418	PD1 | Tumor	NA
+ID.419	Frequent	NA
+ID.420	Frequent	NA
+ID.421	Frequent	NA
+ID.422	Frequent	NA
+ID.423	Tumor	NA
+ID.424	Expanding	NA
+ID.425	Expanding	NA
+ID.426	Tumor	NA
+ID.427	Frequent	NA
+ID.428	Frequent	NA
+ID.429	Frequent	NA
+ID.430	Frequent	NA
+ID.431	Frequent	NA
+ID.432	Expanding	NA
+ID.433	Frequent	NA
+ID.434	Frequent	NA
+ID.435	PD1 | Tumor	NA
+ID.436	Frequent	NA
+ID.437	Frequent	NA
+ID.438	PD1	NA
+ID.439	Expanding	NA
+ID.440	PD1 | Expanding	Auto-reactive
+ID.441	PD1	NA
+ID.442	Tumor	NA
+ID.443	PD1 | Expanding	NA
+ID.444	Frequent	NA
+ID.445	PD1	Auto-reactive
+ID.446	PD1 | Tumor	NA
+ID.447	PD1 | Expanding	NA
+ID.448	Expanding	NA
+ID.449	Frequent	NA
+ID.450	PD1	NA
+ID.451	PD1	NA
+ID.452	Expanding	NA
+ID.453	PD1 | Tumor	NA
+ID.454	Frequent	NA
+ID.455	Frequent	NA
+ID.456	PD1 | Expanding	NA
+ID.457	Expanding	NA
+ID.458	None	NA
+ID.459	Expanding	NA
+ID.460	Frequent	NA
+ID.461	Frequent	NA
+ID.462	Tumor | Expanding	NA
+ID.463	Frequent	NA
+ID.464	Expanding	NA
+ID.465	Frequent	NA
+ID.466	Tumor	NA
+ID.467	Frequent	NA
+ID.468	Tumor	NA
+ID.469	PD1 | Expanding	NA
+ID.470	Frequent	NA
+ID.471	Frequent	NA
+ID.472	Expanding	NA
+ID.473	None	NA
+ID.474	Expanding	NA
+ID.475	Expanding	NA
+ID.476	PD1 | Expanding	NA
+ID.477	Frequent	NA
+ID.478	Frequent	NA
+ID.479	Tumor	NA
+ID.480	Tumor	NA
+ID.481	PD1	NA
+ID.482	PD1 | Tumor	NA
+ID.483	Frequent	NA
+ID.484	Frequent	No
+ID.485	Frequent	NA
+ID.486	Frequent	NA
+ID.487	PD1 | Tumor	NA
+ID.488	None	NA
+ID.489	PD1 | Tumor	NA
+ID.490	Expanding	NA
+ID.491	PD1	NA
+ID.492	PD1	NA
+ID.493	Frequent	NA
+ID.494	Frequent	NA
+ID.495	PD1 | Expanding	NA
+ID.496	Expanding	NA
+ID.497	Expanding	NA
+ID.498	Expanding	NA
+ID.499	PD1 | Tumor	NA
+ID.500	Frequent	NA
+ID.501	Frequent	NA
+ID.502	Frequent	NA
+ID.503	Frequent	NA
+ID.504	Frequent	NA
+ID.505	Frequent	NA
+ID.506	Frequent	NA
+ID.507	Frequent	NA
+ID.508	Expanding	NA
+ID.509	Expanding	NA
+ID.510	Tumor	NA
+ID.511	Tumor	NA
+ID.512	Frequent	NA
+ID.513	Frequent	NA
+ID.514	Frequent	NA
+ID.515	Frequent	NA
+ID.516	PD1 | Tumor	NA
+ID.517	PD1	NA
+ID.518	Frequent	NA
+ID.519	Frequent	NA
+ID.520	PD1	NA
+ID.521	Frequent	NA
+ID.522	Frequent	NA
+ID.523	Frequent	NA
+ID.524	PD1	NA
+ID.525	Tumor	Auto-reactive
+ID.526	Frequent	NA
+ID.527	Frequent	NA
+ID.528	Frequent	NA
+ID.529	Frequent	NA
+ID.530	Frequent	NA
+ID.531	Expanding	Yes
+ID.532	Tumor	NA
+ID.533	Tumor	NA
+ID.534	Frequent	NA
+ID.535	PD1 | Tumor	NA
+ID.536	PD1 | Tumor	NA
+ID.537	PD1 | Expanding	NA
+ID.538	Tumor	NA
+ID.539	Expanding	NA
+ID.540	Frequent	NA
+ID.541	Expanding	NA
+ID.542	PD1	NA
+ID.543	Frequent	NA
+ID.544	Expanding	NA
+ID.545	Expanding	NA
+ID.546	None	NA
+ID.547	PD1 | Expanding	NA
+ID.548	Frequent	NA
+ID.549	Frequent	NA
+ID.550	Frequent	NA
+ID.551	Expanding	NA
+ID.552	Frequent	NA
+ID.553	Expanding	NA
+ID.554	Frequent	NA
+ID.555	Expanding	NA
+ID.556	Frequent	NA
+ID.557	Tumor	NA
+ID.558	Tumor	NA
+ID.559	Tumor	NA
+ID.560	None	NA
+ID.561	Frequent	NA
+ID.562	PD1 | Tumor	NA
+ID.563	Frequent	NA
+ID.564	PD1	NA
+ID.565	PD1	NA
+ID.566	PD1	NA
+ID.567	Frequent	NA
+ID.568	Tumor	NA
+ID.569	Frequent	NA
+ID.570	Tumor	NA
+ID.571	PD1	NA
+ID.572	PD1 | Expanding	Yes
+ID.573	Frequent	NA
+ID.574	Tumor	NA
+ID.575	PD1 | Tumor	NA
+ID.576	Expanding	NA
+ID.577	Frequent	NA
+ID.578	Tumor	NA
+ID.579	Tumor	NA
+ID.580	Frequent	NA
+ID.581	Frequent	NA
+ID.582	Frequent	NA
+ID.583	Tumor	NA
+ID.584	Expanding	NA
+ID.585	Frequent	NA
+ID.586	Frequent	NA
+ID.587	Frequent	NA
+ID.588	PD1	NA
+ID.589	Frequent	NA
+ID.590	Frequent	NA
+ID.591	PD1 | Tumor	NA
+ID.592	Frequent	NA
+ID.593	None	NA
+ID.594	PD1 | Expanding	NA
+ID.595	Tumor	NA
+ID.596	Expanding	NA
+ID.597	Frequent	NA
+ID.598	Frequent	NA
+ID.599	PD1 | Tumor	NA
+ID.600	Frequent	NA
+ID.601	Frequent	NA
+ID.602	Frequent	NA
+ID.603	None	NA
+ID.604	PD1 | Tumor	NA
+ID.605	PD1 | Expanding	NA
+ID.606	PD1	NA
+ID.607	Frequent	NA
+ID.608	Frequent	NA
+ID.609	PD1 | Tumor	NA
+ID.610	Expanding	NA
+ID.611	Expanding	NA
+ID.612	PD1	NA
+ID.613	PD1	NA
+ID.614	PD1	NA
+ID.615	PD1	NA
+ID.616	PD1	NA
+ID.617	PD1	NA
+ID.618	PD1	Yes
+ID.619	PD1	NA
+ID.620	PD1 | Tumor	NA
+ID.621	PD1 | Tumor	NA
+ID.622	PD1 | Tumor	NA
+ID.623	PD1 | Tumor	NA
+ID.624	PD1	NA
+ID.625	PD1	NA
+ID.626	PD1	NA
+ID.627	PD1	NA
+ID.628	PD1	NA
+ID.629	PD1	NA
+ID.630	PD1 | Tumor	NA
+ID.631	PD1	NA
+ID.632	PD1 | Tumor	NA
+ID.633	PD1	NA
+ID.634	PD1	NA
+ID.635	PD1	NA
+ID.636	PD1 | Tumor	NA
+ID.637	PD1 | Tumor	NA
+ID.638	PD1	NA
+ID.639	PD1 | Expanding	NA
+ID.640	PD1 | Tumor	Yes
+ID.641	PD1 | Tumor	NA
+ID.642	PD1 | Tumor	NA
+ID.643	PD1	NA
+ID.644	PD1	NA
+ID.645	PD1	NA
+ID.646	PD1 | Tumor	No
+ID.647	PD1 | Tumor	NA
+ID.648	PD1	NA
+ID.649	PD1	NA
+ID.650	PD1 | Tumor	NA
+ID.651	PD1	NA
+ID.652	PD1	NA
+ID.653	PD1	NA
+ID.654	PD1	NA
+ID.655	PD1	NA
+ID.656	PD1	NA
+ID.657	PD1	NA
+ID.658	PD1	NA
+ID.659	PD1 | Tumor	NA
+ID.660	PD1	NA
+ID.661	PD1	NA
+ID.662	PD1	NA
+ID.663	PD1	NA
+ID.664	PD1 | Tumor	No
+ID.665	PD1	NA
+ID.666	PD1 | Tumor	NA
+ID.667	PD1 | Tumor	NA
+ID.668	PD1	NA
+ID.669	PD1	NA
+ID.670	PD1	NA
+ID.671	PD1 | Tumor	No
+ID.672	PD1	NA
+ID.673	PD1	NA
+ID.674	PD1	NA
+ID.675	PD1	NA
+ID.676	PD1 | Tumor	NA
+ID.677	PD1 | Tumor	NA
+ID.678	PD1 | Expanding	NA
+ID.679	PD1 | Tumor	NA
+ID.680	PD1 | Tumor	NA
+ID.681	PD1 | Tumor	NA
+ID.682	PD1	NA
+ID.683	PD1	NA
+ID.684	PD1	Auto-reactive
+ID.685	PD1 | Expanding	NA
+ID.686	PD1 | Expanding	NA
+ID.687	PD1	NA
+ID.688	PD1 | Tumor	NA
+ID.689	PD1 | Tumor	NA
+ID.690	PD1	NA
+ID.691	PD1	NA
+ID.692	PD1 | Tumor	NA
+ID.693	PD1 | Expanding	NA
+ID.694	PD1	NA
+ID.695	PD1 | Tumor	NA
+ID.696	PD1 | Tumor	NA
+ID.697	PD1 | Tumor	NA
+ID.698	PD1	NA
+ID.699	PD1	NA
+ID.700	PD1 | Tumor	NA
+ID.701	PD1 | Tumor	NA
+ID.702	PD1	NA
+ID.703	PD1	NA
+ID.704	PD1 | Tumor	NA
+ID.705	PD1	NA
+ID.706	PD1	NA
+ID.707	PD1 | Tumor	NA
+ID.708	PD1	NA
+ID.709	PD1 | Tumor	NA
+ID.710	PD1 | Tumor	NA
+ID.711	PD1	NA
+ID.712	PD1	NA
+ID.713	PD1	NA
+ID.714	PD1	NA
+ID.715	PD1	NA
+ID.716	PD1	NA
+ID.717	PD1	NA
+ID.718	PD1	NA
+ID.719	PD1	NA
+ID.720	PD1	NA
+ID.721	PD1	NA
+ID.722	PD1 | Tumor	NA
+ID.723	PD1	NA
+ID.724	PD1	NA
+ID.725	PD1	NA
+ID.726	PD1	NA
+ID.727	PD1	NA
+ID.728	PD1 | Expanding	NA
+ID.729	PD1	NA
+ID.730	PD1	NA
+ID.731	PD1 | Tumor	NA
+ID.732	PD1 | Tumor | Expanding	NA
+ID.733	PD1 | Tumor	NA
+ID.734	PD1	NA
+ID.735	PD1	NA
+ID.736	PD1	NA
+ID.737	PD1 | Expanding	NA
+ID.738	PD1	NA
+ID.739	PD1	NA
+ID.740	PD1	NA
+ID.741	PD1	NA
+ID.742	PD1	NA
+ID.743	PD1 | Expanding	NA
+ID.744	PD1 | Expanding	NA
+ID.745	PD1 | Tumor	NA
+ID.746	PD1 | Tumor	Yes
+ID.747	PD1 | Expanding	NA
+ID.748	PD1 | Expanding	NA
+ID.749	PD1 | Tumor	NA
+ID.750	PD1	NA
+ID.751	PD1 | Tumor	NA
+ID.752	PD1 | Tumor	NA
+ID.753	PD1	NA
+ID.754	PD1	NA
+ID.755	PD1	NA
+ID.756	PD1	NA
+ID.757	PD1	NA
+ID.758	PD1	NA
+ID.759	PD1	NA
+ID.760	PD1	NA
+ID.761	PD1 | Expanding	NA
+ID.762	PD1 | Tumor	NA
+ID.763	PD1 | Tumor	NA
+ID.764	PD1 | Tumor	NA
+ID.765	PD1	NA
+ID.766	PD1 | Tumor	NA
+ID.767	PD1 | Tumor	NA
+ID.768	PD1 | Tumor	NA
+ID.769	PD1	NA
+ID.770	PD1 | Tumor	NA
+ID.771	PD1	NA
+ID.772	PD1	NA
+ID.773	PD1	NA
+ID.774	None	NA
+ID.775	Frequent	NA
+ID.776	Tumor	NA
+ID.777	Frequent	NA
+ID.778	Tumor	NA
+ID.779	Frequent	NA
+ID.780	Frequent	NA
+ID.781	Frequent	NA
+ID.782	None	NA
+ID.783	Frequent	NA
+ID.784	Frequent	NA
+ID.785	Expanding	NA
+ID.786	Frequent	NA
+ID.787	Frequent	NA
+ID.788	Tumor	NA
+ID.789	PD1 | Tumor	NA
+ID.790	Frequent	NA
+ID.791	Expanding	NA
+ID.792	Expanding	NA
+ID.793	PD1 | Tumor	NA
+ID.794	Frequent	NA
+ID.795	Tumor	NA
+ID.796	Tumor	NA
+ID.797	Frequent	NA
+ID.798	Frequent	NA
+ID.799	Frequent	NA
+ID.800	Frequent	NA
+ID.801	Frequent	NA
+ID.802	Frequent	NA
+ID.803	Expanding	NA
+ID.804	Frequent	NA
+ID.805	Expanding	NA
+ID.806	Frequent	NA
+ID.807	Frequent	NA
+ID.808	Frequent	NA
+ID.809	Frequent	NA
+ID.810	PD1	NA
+ID.811	Frequent	NA
+ID.812	Frequent	NA
+ID.813	Tumor	NA
+ID.814	Frequent	NA
+ID.815	Frequent	NA
+ID.816	Frequent	NA
+ID.817	Frequent	NA
+ID.818	Tumor	NA
+ID.819	Tumor	No
+ID.820	Tumor	NA
+ID.821	Frequent	NA
+ID.822	Frequent	NA
+ID.823	Frequent	NA
+ID.824	Tumor	NA
+ID.825	Frequent	NA
+ID.826	Tumor	NA
+ID.827	Frequent	NA
+ID.828	Frequent	NA
+ID.829	Frequent	NA
+ID.830	Frequent	NA
+ID.831	Expanding	NA
+ID.832	Frequent	NA
+ID.833	PD1	NA
+ID.834	Frequent	NA
+ID.835	Frequent	NA
+ID.836	Expanding	NA
+ID.837	Frequent	NA
+ID.838	Tumor	NA
+ID.839	Frequent	NA
+ID.840	Expanding	NA
+ID.841	Frequent	NA
+ID.842	Frequent	NA
+ID.843	Frequent	NA
+ID.844	Frequent	NA
+ID.845	Frequent	NA
+ID.846	Frequent	NA
+ID.847	Frequent	NA
+ID.848	Frequent	NA
+ID.849	Frequent	NA
+ID.850	PD1 | Tumor	NA
+ID.851	Tumor	NA
+ID.852	Tumor	NA
+ID.853	PD1	NA
+ID.854	Frequent	NA
+ID.855	Frequent	NA
+ID.856	Frequent	NA
+ID.857	Expanding	NA
+ID.858	Tumor	NA
+ID.859	Tumor	NA
+ID.860	Expanding	NA
+ID.861	Frequent	NA
+ID.862	Frequent	NA
+ID.863	Frequent	NA
+ID.864	Expanding	NA
+ID.865	Frequent	NA
+ID.866	Expanding	NA
+ID.867	Frequent	NA
+ID.868	None	NA
+ID.869	None	NA
+ID.870	Frequent	NA
+ID.871	Tumor	NA
+ID.872	Frequent	NA
+ID.873	Expanding	NA
+ID.874	None	NA
+ID.875	Frequent	NA
+ID.876	Frequent	NA
+ID.877	Expanding	NA
+ID.878	Frequent	NA
+ID.879	Frequent	NA
+ID.880	Expanding	NA
+ID.881	Frequent	NA
+ID.882	Expanding	NA
+ID.883	Frequent	NA
+ID.884	Frequent	NA
+ID.885	None	NA
+ID.886	None	NA
+ID.887	Frequent	NA
+ID.888	Frequent	NA
+ID.889	Expanding	NA
+ID.890	None	NA
+ID.891	PD1	NA
+ID.892	Tumor	NA
+ID.893	Frequent	NA
+ID.894	Frequent	NA
+ID.895	Frequent	NA
+ID.896	Frequent	NA
+ID.897	PD1 | Tumor	NA
+ID.898	PD1	NA
+ID.899	Frequent	NA
+ID.900	Expanding	NA
+ID.901	PD1 | Tumor	NA
+ID.902	Frequent	NA
+ID.903	Expanding	NA
+ID.904	PD1	NA
+ID.905	Tumor	NA
+ID.906	PD1	NA
+ID.907	Frequent	NA
+ID.908	Frequent	NA
+ID.909	Frequent	NA
+ID.910	Expanding	NA
+ID.911	Frequent	NA
+ID.912	Tumor	NA
+ID.913	None	NA
+ID.914	None	NA
+ID.915	Frequent	NA
+ID.916	Frequent	NA
+ID.917	PD1	NA
+ID.918	PD1	NA
+ID.919	PD1 | Tumor	NA
+ID.920	PD1 | Tumor	NA
+ID.921	PD1 | Expanding	NA
+ID.922	Expanding	NA
+ID.923	Frequent	NA
+ID.924	Tumor	NA
+ID.925	Frequent	NA
+ID.926	Expanding	NA
+ID.927	Frequent	NA
+ID.928	Frequent	NA
+ID.929	Tumor	NA
+ID.930	None	NA
+ID.931	Expanding	NA
+ID.932	PD1 | Tumor	NA
+ID.933	Frequent	NA
+ID.934	None	NA
+ID.935	None	NA
+ID.936	Expanding	NA
+ID.937	None	NA
+ID.938	Frequent	NA
+ID.939	PD1	NA
+ID.940	Frequent	NA
+ID.941	Expanding	NA
+ID.942	Expanding	NA
+ID.943	Frequent	NA
+ID.944	Frequent	NA
+ID.945	PD1 | Tumor	NA
+ID.946	Expanding	NA
+ID.947	Frequent	NA
+ID.948	Expanding	NA
+ID.949	Tumor	NA
+ID.950	Expanding	NA
+ID.951	Frequent	NA
+ID.952	Frequent	NA
+ID.953	Frequent	NA
+ID.954	Tumor	NA
+ID.955	Frequent	NA
+ID.956	Frequent	NA
+ID.957	Frequent	NA
+ID.958	Frequent	NA
+ID.959	Frequent	NA
+ID.960	None	NA
+ID.961	Tumor	NA
+ID.962	Tumor	NA
+ID.963	Expanding	NA
+ID.964	Tumor	NA
+ID.965	Tumor	NA
+ID.966	Tumor	NA
+ID.967	Tumor	NA
+ID.968	Expanding	NA
+ID.969	Frequent	NA
+ID.970	Expanding	NA
+ID.971	Frequent	NA
+ID.972	Frequent	NA
+ID.973	Tumor	NA
+ID.974	Frequent	NA
+ID.975	Tumor	NA
+ID.976	Expanding	NA
+ID.977	Tumor	NA
+ID.978	Frequent	NA
+ID.979	Frequent	NA
+ID.980	PD1	NA
+ID.981	PD1	NA
+ID.982	Expanding	NA
+ID.983	PD1	NA
+ID.984	Frequent	NA
+ID.985	Frequent	NA
+ID.986	Frequent	NA
+ID.987	Frequent	NA
+ID.988	PD1	NA
+ID.989	Frequent	NA
+ID.990	Frequent	NA
+ID.991	Frequent	NA
+ID.992	Frequent	NA
+ID.993	Frequent	NA
+ID.994	Tumor	NA
+ID.995	Frequent	NA
+ID.996	Frequent	NA
+ID.997	Frequent	NA
+ID.998	Expanding	NA
+ID.999	Frequent	NA
+ID.1000	Frequent	NA
+ID.1001	Frequent	NA
+#015	PD1 | Expanding	No
+#025	PD1	No
+#034	PD1 | Expanding	No
+#045	PD1 | Expanding	No

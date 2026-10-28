@@ -82,7 +82,7 @@ category_colors_yossef <- c(
   "CD8.TEX" = "black",
   "Non-hits"  = "#8C6D5C",
   "NaiveLike" = "#7A8F6B",
-  "NA"        = "#C6B8A6",
+  "Other"     = "#C6B8A6",
   "Viral_databases" = "#2F6F8F",
   "Non-reactive;Viral_databases" = "#7FAF9B"
 )

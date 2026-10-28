@@ -907,10 +907,11 @@ radar_compare_reactive <- function(
   df <- df %>%
     group_by(Gene) %>%
     mutate(
-      Value_scaled = case_when(
-        scale == "linear" ~ Value,
-        scale == "log2"   ~ log2(Value + 1),
-        scale == "zscore" ~ (Value - mean(Value, na.rm = TRUE)) / sd(Value, na.rm = TRUE)
+      Value_scaled = switch(
+        scale,
+        linear = Value,
+        log2   = log2(Value + 1),
+        zscore = (Value - mean(Value, na.rm = TRUE)) / sd(Value, na.rm = TRUE)
       )
     ) %>%
     ungroup()
@@ -986,7 +987,7 @@ radar_compare_reactive <- function(
       x_bottom = r_bottom * cos(angle),
       y_bottom = r_bottom * sin(angle)
     ) %>%
-    bind_rows(slice(., 1)) %>%
+    bind_rows(dplyr::slice(., 1)) %>%
     ungroup()
   max_r <- max(data_summary$Mean + data_summary$SEM, na.rm = TRUE)*1.25
   col_map <- c(
@@ -1037,7 +1038,7 @@ radar_compare_reactive <- function(
         angle = text_angle,
         hjust = hjust
       ),
-      size = 2.2
+      size = 3
     ) +
     scale_color_manual(values = col_map) +
     scale_fill_manual(values = col_map) +
@@ -1070,13 +1071,13 @@ find_markers <- function(object,
   radar_scale="log2",
   xlim_range=c(-7.5,7.5)
 ) {
+  # the object is expected to be log-normalized already (LogNormalize is per cell, so subsetting does not change it)
   subset_obj <- subset(object, subset = category %in% groups & time %in% time_point)
   DefaultAssay(subset_obj) <- assay
   Idents(subset_obj) <- "category"
-  subset_obj <- NormalizeData(subset_obj, layer = "counts", normalization.method = "LogNormalize", scale.factor = 10000)
-  subset_obj <- FindVariableFeatures(subset_obj, selection.method="vst", nfeatures=5000)
-  subset_obj <- ScaleData(subset_obj)
-  markers <- FindMarkers(subset_obj, ident.1=groups[1], ident.2=groups[2],
+  features_use <- rownames(subset_obj[[assay]])
+  features_use <- setdiff(features_use, excluded_signature_genes(features_use))
+  markers <- FindMarkers(subset_obj, ident.1=groups[1], ident.2=groups[2], features=features_use,
     logfc.threshold=logfc.threshold, min.pct=min.pct) %>% rownames_to_column("gene")
   markers$significant <- markers$p_val<pval_cutoff & abs(markers$avg_log2FC)>logfc_cutoff
   volcano <- ggplot(markers, aes(avg_log2FC, -log10(p_val), fill=significant)) +
@@ -1157,9 +1158,13 @@ find_markers <- function(object,
     if(length(genes)>=3) {
       radar <- tryCatch(
         radar_compare_reactive(object_sub, gene_list=genes, filter_up=FALSE, scale=radar_scale),
-        error=function(e) NULL
+        error=function(e) {
+          warning("Radar plot failed for ", group_name, ": ", conditionMessage(e), call.=FALSE)
+          NULL
+        }
       )
-      if(is.null(radar)) return(list(plot=NULL, genes=character(0)))
+      # keep the genes even if the plot fails, so the signature is not silently emptied
+      if(is.null(radar)) return(list(plot=NULL, genes=genes))
       return(list(plot=if(is.list(radar) && "plot" %in% names(radar)) radar$plot else radar, genes=genes))
     } else {
       plot_data <- stats_table %>% filter(pass_filter) %>% select(gene, mean_gr1, sem_gr1, mean_gr2, sem_gr2) %>%
@@ -1186,9 +1191,17 @@ find_markers <- function(object,
   )
 }
 
+# TCR V(D)J and ribosomal genes are kept in the matrix (library size, normalization) but excluded from DE and signatures
+excluded_signature_genes <- function(genes) {
+  tcr_genes <- setdiff(genes, quietTCRgenes(genes))
+  ribo_genes <- intersect(genes, scGate::genes.blacklist.default$Hs$Ribo)
+  union(tcr_genes, ribo_genes)
+}
+
 refine_gene_set <- function(genes) {
+  base_genes <- sub("-$", "", genes)
   genes %>%
-    .[!grepl("^TRAV|^TRBV", .)] %>%
+    .[!base_genes %in% excluded_signature_genes(base_genes)] %>%
     .[order(grepl("-$", .), .)]
 }
 

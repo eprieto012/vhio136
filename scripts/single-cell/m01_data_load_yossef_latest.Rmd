@@ -17,10 +17,12 @@ batch_dir <- file.path(datapath, sample)
 
 # load
 
-Public data from Yossef et al. Correction of ambient RNA using SoupX:
+Public data from Yossef et al. Estimation of ambient RNA contamination using SoupX:
 <https://cran.r-project.org/web/packages/SoupX/vignettes/pbmcTutorial.html>
 <https://www.sc-best-practices.org/preprocessing_visualization/quality_control.html>
 <https://cellgeni.github.io/notebooks/html/new-10kPBMC-SoupX.html>
+
+SoupX is used as a QC step only: the contamination fraction (rho) is estimated per sample, but counts are not corrected (no adjustCounts()), so the downstream object is built from the uncorrected matrix. autoEstCont() relies on cluster-specific genes, which are scarce in sorted T cells, so the estimate is fragile; forceAccept = TRUE only prevents the run from stopping when an implausible value is estimated. Estimated rho = 0.01-0.03 in all samples except RY4422-CD8-2 (0.65), which SoupX itself flags as a failure of the estimation rather than real contamination.
 
 ```{r, message=FALSE, warning=FALSE}
 folder_data <- sample
@@ -298,23 +300,13 @@ rm(mito_plots_filter)
 
 # filtering
 
-Elimination of ribosomal and TCR genes + cells with >20% percent.mt and without TCR info.
-<https://github.com/ncborcherding/Trex/>
+Elimination of cells with >20% percent.mt and without TCR info + genes detected in <5 cells.
+TCR V(D)J and ribosomal genes are kept in the matrix (they contribute to library size and normalization). They are excluded downstream: from integration (genes.blacklist.default in STACAS) and from DE/signatures (excluded_signature_genes() in setup/functions.R).
 
 ```{r}
-all_genes <- rownames(object)
-tcr_genes <- setdiff(all_genes, quietTCRgenes(all_genes))
-quietRibogenes <- function(genes) {
-  ribo_genes <- genes[genes %in% scGate::genes.blacklist.default$Hs$Ribo]
-  ribo_genes <- na.omit(ribo_genes)
-  return(ribo_genes)
-}
-ribo_genes <- quietRibogenes(all_genes)
 counts <- GetAssayData(object = object, assay = "RNA", layer = "counts")
 expressed_genes <- rowSums(counts > 0) >= 5
-expressed_genes <- names(expressed_genes[expressed_genes])
-keep_genes <- setdiff(all_genes, c(tcr_genes, ribo_genes))
-keep_genes <- intersect(all_genes, expressed_genes)
+keep_genes <- names(expressed_genes[expressed_genes])
 all_cells <- rownames(object@meta.data)
 elim_cells_mt <- all_cells[object@meta.data$tag.mt == "elim_mt"]
 elim_cells_tcr <- all_cells[object@meta.data$tag.tcr == "no"]
@@ -323,7 +315,7 @@ object <- subset(object,
                  features = keep_genes,
                  cells = keep_cells
                  )
-rm(all_genes, tcr_genes, quietRibogenes, ribo_genes, counts, expressed_genes, keep_genes, all_cells, elim_cells_mt, elim_cells_tcr, keep_cells)
+rm(counts, expressed_genes, keep_genes, all_cells, elim_cells_mt, elim_cells_tcr, keep_cells)
 ```
 
 # doublets
@@ -336,10 +328,11 @@ Automated annotation using scDblFinder:
 set.seed(SEED)
 # --- Transform Seurat to SCE ---
 sce_obj <- as.SingleCellExperiment(object, assay = "RNA")
+colData(sce_obj)$tag <- object$tag
 sce_obj <- scDblFinder(
   sce_obj,
-  samples = object$tag,
-  clusters = TRUE,
+  samples = "tag",
+  clusters = FALSE,
   BPPARAM = BiocParallel::SerialParam(RNGseed = SEED)
 )
 # --- Return to Seurat ---
@@ -352,7 +345,7 @@ rm(sce_obj)
 Doublet removal. Doublets with a reactive TCR (same patient + cdr3 match as in the reactivity annotation below) are kept.
 
 ```{r}
-tcr_reactivity <- fread(file.path(datapath_load, "outs", "yossef_reactivity.tsv")) %>% as.data.frame()
+tcr_reactivity <- fread(file.path(aux_dir, "yossef-cohort", "yossef_reactive_tcrs.tsv")) %>% as.data.frame()
 reactive_keys <- paste(tcr_reactivity$patient, paste0(tcr_reactivity$TCRa, ";", tcr_reactivity$TCRb))
 is_reactive <- paste(sub("_.*", "", object$tag), object$cdr3) %in% reactive_keys
 table(doublet = object$scDblFinder.class, reactive = is_reactive)
@@ -431,7 +424,7 @@ rm(chains_data)
 Reactive T cells by Yossef et al.
 
 ```{r}
-tcr_reactivity <- fread(file.path(datapath_load, "outs", "yossef_reactivity.tsv")) %>% as.data.frame()
+tcr_reactivity <- fread(file.path(aux_dir, "yossef-cohort", "yossef_reactive_tcrs.tsv")) %>% as.data.frame()
 tcr_reactivity$cdr3 <- paste0(tcr_reactivity$TCRa, ";", tcr_reactivity$TCRb)
 tcr_reactivity$reactive <- "yes"
 meta <- object@meta.data
@@ -441,15 +434,48 @@ meta <- meta %>% left_join(tcr_reactivity %>% select(patient, cdr3, Mutation, re
                            )
 object@meta.data <- meta
 rownames(object@meta.data) <- object@meta.data$cell_id
-# --- Category reactive vs non-reactive ---
+# --- Category: Reactive vs Other ---
+# yossef_reactivity.tsv only lists reactive TCRs, so the rest (tested-negative, untested, no paired TCR) cannot be told apart
 object$category <- ifelse(
-  object$reactive == "yes",
+  !is.na(object$reactive) & object$reactive == "yes",
   "Reactive",
-  "Non-reactive"
+  "Other"
 )
-object@meta.data$category[is.na(object@meta.data$category)] <- "NA"
 object@meta.data$Mutation[is.na(object@meta.data$Mutation)] <- "NA"
 object@meta.data$reactive[is.na(object@meta.data$reactive)] <- "NA"
+```
+
+# annotations.
+
+CD8+ non-naïve annotation, used only for the additional CD8+ non-naïve evaluation in m05 (the main evaluation uses all cells, which are not removed here).
+Cell type by scGate (same PBMC model as in vhio136; there is no MAGIC/pdfCluster step in this cohort) and functional states of CD8+ T cells by ProjecTILs (CD8T reference, as in m02). Signature scores are not affected: UCell is computed on the RNA counts layer.
+scGate: <https://github.com/carmonalab/scGate>
+ProjecTILs: <https://github.com/carmonalab/ProjecTILs>
+
+```{r, warning=FALSE}
+object <- NormalizeData(object, assay = "RNA", verbose = FALSE)
+scGate_models_DB <- get_scGateDB(version = "v0.17")  # pinned: identical to master as of 2026-10
+models.pbmc <- scGate_models_DB$human$PBMC
+object <- scGate(object, assay = "RNA", model = models.pbmc)
+object$scGate_multi <- ifelse(is.na(object$scGate_multi), "unknown", object$scGate_multi)
+object$celltype <- dplyr::case_when(
+  object$scGate_multi == "CD8T" ~ "cd8",
+  object$scGate_multi == "CD4T" ~ "cd4",
+  TRUE ~ "unknown"
+)
+table(object$patient, object$celltype)
+rm(scGate_models_DB, models.pbmc)
+```
+
+```{r, warning=FALSE}
+ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", "CD8T_human_ref_v1.rds"))
+cd8_cells <- subset(object, subset = celltype == "cd8")
+set.seed(SEED)
+cd8_cells <- make.projection(cd8_cells, ref = ref.use, filter.cells = FALSE, skip.normalize = TRUE, ncores = REPRO_NCORES)
+cd8_cells <- cellstate.predict(ref = ref.use, query = cd8_cells)
+object <- AddMetaData(object, cd8_cells@meta.data[, c("functional.cluster", "functional.cluster.conf")])
+table(object$patient, object$functional.cluster, useNA = "ifany")
+rm(ref.use, cd8_cells)
 ```
 
 # checkpoint.

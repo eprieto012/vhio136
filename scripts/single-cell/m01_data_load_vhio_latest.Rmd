@@ -17,10 +17,12 @@ batch_dir <- file.path(datapath, sample, "vhio")
 
 # load
 
-Correction of ambient RNA using SoupX:
+Estimation of ambient RNA contamination using SoupX:
 <https://cran.r-project.org/web/packages/SoupX/vignettes/pbmcTutorial.html>
 <https://www.sc-best-practices.org/preprocessing_visualization/quality_control.html>
 <https://cellgeni.github.io/notebooks/html/new-10kPBMC-SoupX.html>
+
+SoupX is used as a QC step only: the contamination fraction (rho) is estimated per sample, but counts are not corrected (no adjustCounts()), so the downstream object is built from the uncorrected matrix. autoEstCont() relies on cluster-specific genes, which are scarce in sorted T cells, so the estimate is fragile; forceAccept = TRUE only prevents the run from stopping when an implausible value is estimated. Estimated rho = 0.01 in all samples.
 
 ```{r}
 folder_data <- "vhio"
@@ -306,23 +308,13 @@ rm(mito_plots_filter)
 
 # filtering
 
-Elimination of ribosomal and TCR genes + cells with >20% percent.mt and without TCR info.
-<https://github.com/ncborcherding/Trex/>
+Elimination of cells with >20% percent.mt and without TCR info + genes detected in <5 cells.
+TCR V(D)J and ribosomal genes are kept in the matrix (they contribute to library size and normalization). They are excluded downstream: from integration (genes.blacklist.default in STACAS) and from DE/signatures (excluded_signature_genes() in setup/functions.R).
 
 ```{r}
-all_genes <- rownames(object)
-tcr_genes <- setdiff(all_genes, quietTCRgenes(all_genes))
-quietRibogenes <- function(genes) {
-  ribo_genes <- genes[genes %in% scGate::genes.blacklist.default$Hs$Ribo]
-  ribo_genes <- na.omit(ribo_genes)
-  return(ribo_genes)
-}
-ribo_genes <- quietRibogenes(all_genes)
 counts <- GetAssayData(object = object, assay = "RNA", layer = "counts")
 expressed_genes <- rowSums(counts > 0) >= 5
-expressed_genes <- names(expressed_genes[expressed_genes])
-keep_genes <- setdiff(all_genes, c(tcr_genes, ribo_genes))
-keep_genes <- intersect(all_genes, expressed_genes)
+keep_genes <- names(expressed_genes[expressed_genes])
 all_cells <- rownames(object@meta.data)
 elim_cells_mt <- all_cells[object@meta.data$tag.mt == "elim_mt"]
 elim_cells_tcr <- all_cells[object@meta.data$tag.tcr == "no"]
@@ -331,7 +323,7 @@ object <- subset(object,
                  features = keep_genes,
                  cells = keep_cells
                  )
-rm(all_genes, tcr_genes, quietRibogenes, ribo_genes, counts, expressed_genes, keep_genes, all_cells, elim_cells_mt, elim_cells_tcr, keep_cells)
+rm(counts, expressed_genes, keep_genes, all_cells, elim_cells_mt, elim_cells_tcr, keep_cells)
 ```
 
 IMPORTANT: Repeat IC04 and IC05 quality checks after filtering.
@@ -456,7 +448,7 @@ rm(doublet_plots)
 Important: Keep those clonotypes included in the TCR library.
 
 ```{r}
-tcr_lib_clonotypes <- readRDS(file.path(datapath_load, "outs/pre_post2_library_clonotypes.rds")) %>%
+tcr_lib_clonotypes <- readRDS(file.path(aux_dir, "tcr-library", "tcr_library_clonotypes_pre_post2.rds")) %>%
   as.data.frame() %>%
   mutate(
     across(c(v_gene, j_gene), ~ gsub("\\*[0-9]+", "", .))
@@ -883,8 +875,6 @@ Internal control
 ids_unique <- unique(unlist(strsplit(na.omit(object_SCT$id), ";", fixed = TRUE)))
 length(ids_unique)
 ```
-
-NA
 
 # checkpoint.
 

@@ -8,19 +8,25 @@
 !/setup/
 /setup/refs/
 
+# Input data: only the auxiliary tables in data/aux (Cell Ranger outputs and bulk repertoires are not tracked)
+!/data/
+/data/*
+!/data/aux/
+/data/aux/bulk-repertoire/
+
 # renv: lockfile + bootstrap files (library is restored with renv::restore())
-!/renv_vhio136/
-/renv_vhio136/*
-!/renv_vhio136/.Rprofile
-!/renv_vhio136/renv.lock
-!/renv_vhio136/renv/
-/renv_vhio136/renv/*
-!/renv_vhio136/renv/activate.R
-!/renv_vhio136/renv/settings.json
-!/renv_vhio136/renv/.gitignore
+!/renv-vhio136/
+/renv-vhio136/*
+!/renv-vhio136/.Rprofile
+!/renv-vhio136/renv.lock
+!/renv-vhio136/renv/
+/renv-vhio136/renv/*
+!/renv-vhio136/renv/activate.R
+!/renv-vhio136/renv/settings.json
+!/renv-vhio136/renv/.gitignore
 
 # conda/python environment exports
-!/renv_vhio136/env_lock/
+!/renv-vhio136/env-lock/
 
 .Rhistory
 .RData

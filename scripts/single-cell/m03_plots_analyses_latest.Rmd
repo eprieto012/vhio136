@@ -29,10 +29,9 @@ dir.create(traj_table_dir, showWarnings = FALSE, recursive = TRUE)
 Tumor-reactive TCR colors
 
 ```{r}
-out_dir <- file.path(datapath_load, "outs")
 shape_pool <- c(0, 1, 2, 5, 6, 7, 3, 4, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23, 24, 25)
 colors_tcr_tbl <- read.table(
-  file.path(out_dir, "color_TCR.IDs.txt"),
+  file.path(aux_dir, "tcr-library", "tcr_library_colors.txt"),
   header = FALSE,
   skip = 1,
   stringsAsFactors = FALSE,
@@ -53,7 +52,7 @@ if (length(tcr_ids) > length(shape_pool)) {
 }
 shape_map <- setNames(shape_pool[seq_along(tcr_ids)], tcr_ids)
 tcr_lib <- read.table(
-  file.path(datapath_load, "outs", "tcr_lib.txt"),
+  file.path(aux_dir, "tcr-library", "tcr_library.txt"),
   col.names = c("TCRb", "TCR.ID"),
   stringsAsFactors = FALSE
 ) %>%
@@ -104,32 +103,10 @@ obj@meta.data[head(stacas_cols, -1)] <- NULL
 stacas_col
 ```
 
-cd8_int_nn: 473 unique TCRs
+Number of tested TCRs and reactivity (viral specificity is already merged into `reactivity` in m02).
 
 ```{r}
 message("Number of TCRs tested in ", compartment, ": ", length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))))
-table(obj$reactivity)
-```
-
-## Adjust
-
-Merge the reactivity annotation with viral-recognition information. First, assess whether there is any overlap between epitope_species and reactive IDs. No overlap is detected, except for ID.198, which is annotated as non-reactive and matches EBV. Therefore, I annotate these cells as EBV.
-
-```{r}
-table(
-  reactivity = !is.na(obj$reactivity),
-  viral_epitope = !is.na(obj$epitope_species)
-)
-overlap_idx <- which(!is.na(obj$reactivity) & !is.na(obj$epitope_species))
-overlap_cells <- rownames(obj@meta.data)[overlap_idx]
-obj@meta.data[overlap_cells, c("reactivity", "epitope_species", "matched_ID", "tumor", "time", "sample", "clonotype_id", "cdr3", "v_gene", "j_gene"), drop = FALSE]
-```
-
-Number of cells with annotated specificity.
-
-```{r}
-idx <- !is.na(obj$epitope_species)
-obj$reactivity[idx] <- as.character(obj$epitope_species[idx])
 table(obj$reactivity, useNA = "ifany")
 ```
 
@@ -918,7 +895,7 @@ print(p)
 Longitudinal CDR-3β repertoires of tumor-reactive PBLs
 
 ```{r}
-path <- file.path(datapath_load, "outs", "pbl_raw_RIO136.tsv")
+path <- file.path(aux_dir, "bulk-repertoire", "pbl_trb_timecourse_vhio136.tsv")
 data_raw <- read.table(path, sep = "\t", header = TRUE) %>%
   dplyr::mutate(
     TRBV = stringr::str_extract(nucleotide, "TCRBV[0-9]+-0?[0-9]"),
@@ -1241,9 +1218,11 @@ genes <- lapply(genes,
 # Remove empty gene groups
 genes <- genes[lengths(genes) > 0]
 # Generate dot plot
+# Pass genes as a vector and facet by group manually: Seurat 5.3.0 uses
+# facet_grid(facets = ...) for named lists, which is defunct in ggplot2 >= 4.0
 p <- DotPlot(obj,
              group.by = "manual.annotation",
-             features = genes,
+             features = unlist(genes, use.names = FALSE),
              assay = "RNA",
              cols = "RdBu",
              scale = TRUE,
@@ -1252,7 +1231,13 @@ p <- DotPlot(obj,
              dot.min = 0.05,
              col.min = -2,
              col.max = 2
-             ) +
+             )
+p$data$feature.groups <- factor(rep(names(genes), lengths(genes))[match(p$data$features.plot, unlist(genes, use.names = FALSE))],
+                                levels = names(genes))
+p <- p +
+  facet_grid(cols = vars(feature.groups),
+             scales = "free_x",
+             space = "free_x") +
   labs(x = NULL,
        y = NULL,
        color = "Scaled average\nexpression",
@@ -2010,33 +1995,10 @@ if (!dir.exists(plot_dir)) {
 }
 ```
 
-cd8_int: 539 unique TCRs (535 library + 4 reconstructed)
+Number of tested TCRs and reactivity (viral specificity is already merged into `reactivity` in m02).
 
 ```{r}
 message("Number of TCRs tested in ", compartment, ": ", length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))))
-table(obj$reactivity)
-```
-
-## Adjust
-
-Merge the reactivity annotation with viral-recognition information. First, assess whether there is any overlap between epitope_species and reactive IDs. No overlap is detected, except for ID.198, which is annotated as non-reactive and matches EBV. Therefore, I annotate these cells as EBV.
-
-```{r}
-table(
-  reactivity = !is.na(obj$reactivity),
-  viral_epitope = !is.na(obj$epitope_species)
-)
-overlap_idx <- which(!is.na(obj$reactivity) & !is.na(obj$epitope_species))
-overlap_cells <- rownames(obj@meta.data)[overlap_idx]
-obj@meta.data[overlap_cells, c("reactivity", "epitope_species", "matched_ID", "tumor", "time", "sample", "clonotype_id", "cdr3", "v_gene", "j_gene"), drop = FALSE]
-
-```
-
-Number of cells with annotated specificity.
-
-```{r}
-idx <- !is.na(obj$epitope_species)
-obj$reactivity[idx] <- as.character(obj$epitope_species[idx])
 table(obj$reactivity, useNA = "ifany")
 ```
 
@@ -2176,33 +2138,10 @@ obj@meta.data[head(stacas_cols, -1)] <- NULL
 stacas_col
 ```
 
-cd4_int: 465 unique TCRs
+Number of tested TCRs and reactivity (viral specificity is already merged into `reactivity` in m02).
 
 ```{r}
 message("Number of TCRs tested in ", compartment, ": ", length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))))
-table(obj$reactivity)
-```
-
-## Adjust
-
-Merge the reactivity annotation with viral-recognition information. First, assess whether there is any overlap between epitope_species and reactive IDs. No overlap is detected, except for ID.198, which is annotated as non-reactive and matches EBV. Therefore, I annotate these cells as EBV.
-
-```{r}
-table(
-  reactivity = !is.na(obj$reactivity),
-  viral_epitope = !is.na(obj$epitope_species)
-)
-overlap_idx <- which(!is.na(obj$reactivity) & !is.na(obj$epitope_species))
-overlap_cells <- rownames(obj@meta.data)[overlap_idx]
-obj@meta.data[overlap_cells, c("reactivity", "epitope_species", "matched_ID", "tumor", "time", "sample", "clonotype_id", "cdr3", "v_gene", "j_gene"), drop = FALSE]
-
-```
-
-Number of cells with annotated specificity.
-
-```{r}
-idx <- !is.na(obj$epitope_species)
-obj$reactivity[idx] <- as.character(obj$epitope_species[idx])
 table(obj$reactivity, useNA = "ifany")
 ```
 
@@ -2321,4 +2260,8 @@ Reactivity
 p <- plot_umap_shadow(obj, "reactivity", reactivity_colors, na_value = "NA", ncol = 3)
 ggsave(filename = file.path(plot_dir, paste0("FigureS7d_", compartment, "_umap_reactivity.pdf")), height = 7.5, width = 7.5, plot = p)
 print(p)
+```
+
+```{r}
+print("Plots saved successfully.")
 ```
