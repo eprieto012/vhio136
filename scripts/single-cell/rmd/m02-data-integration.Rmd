@@ -1,5 +1,5 @@
 ---
-title: "m02_data_integration"
+title: "m02-data-integration"
 author: "Endika Prieto <endikaprieto@vhio.net>"
 date: "2026-10-23"
 output: html_document
@@ -12,7 +12,7 @@ setup_dir <- normalizePath("../setup", mustWork = TRUE)
 source(file.path(setup_dir, "setup.R"), local = TRUE)
 plots_list <- list()
 sample <- "vhio136"
-int_dir <- file.path(datapath, sample, "integrated")
+int_dir <- file.path(datapath, "integrated")
 dir.create(file.path(int_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
 ```
 
@@ -21,8 +21,8 @@ dir.create(file.path(int_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
 Samples already pre-processed with m01 and annotated as cd4 or cd8 based on pdfCluster and scGate consensus.
 
 ```{r}
-object_RP <- readRDS(file.path(datapath, sample, "rootpath", "seurat", "SCT_rootpath.rds"))
-object_VH <- readRDS(file.path(datapath, sample, "vhio", "seurat", "SCT_vhio.rds"))
+object_RP <- readRDS(file.path(datapath, "rootpath", "seurat", "SCT_rootpath.rds"))
+object_VH <- readRDS(file.path(datapath, "vhio", "seurat", "SCT_vhio.rds"))
 obj <- list(object_RP, object_VH)
 obj <- Reduce(merge, obj)
 obj@meta.data$tag <- factor(obj@meta.data$tag, levels = c("pre_bulk1", "pre_bulk2", "pre_bulk3", "pre_pd1", "post1_bulk", "post1_pd1", "post2_bulk1", "post2_bulk2", "post2_bulk3", "post2_pd1", "post6_bulk", "post6_pd1"))
@@ -54,7 +54,7 @@ id_map <- summary_id %>%
     tab_overlap %>%
       group_by(id) %>%
       summarise(
-        CD4_med  = median(CD4_mag,  na.rm = TRUE),
+        CD4_med = median(CD4_mag, na.rm = TRUE),
         CD8A_med = median(CD8A_mag, na.rm = TRUE),
         .groups = "drop"
       ),
@@ -99,9 +99,11 @@ reconstructed <- data.frame(
   j_gene = c("TRAJ26;TRBJ1-1", "TRAJ31*01;TRBJ2-3*01", "TRAJ45;TRBJ1-1", "TRAJ45;TRBJ2-1"),
   stringsAsFactors = FALSE
 )
+# --- Key joining trimmed cdr3, v_gene and j_gene with "||" ---
 make_tcr_key <- function(cdr3, v_gene, j_gene) {
   paste(trimws(as.character(cdr3)), trimws(as.character(v_gene)), trimws(as.character(j_gene)), sep = "||")
 }
+# --- Append new_id to a ;-separated old_id string, without duplicates ---
 append_id <- function(old_id, new_id) {
   if (is.na(new_id) || !nzchar(new_id)) return(old_id)
   old_id <- as.character(old_id)
@@ -120,7 +122,7 @@ idx <- match(meta$key, reconstructed$key)
 meta$id <- mapply(append_id, meta$id, reconstructed$id[idx], USE.NAMES = FALSE)
 meta$key <- NULL
 obj@meta.data <- as.data.frame(meta)
-# --- Convert ChosenID.* to ID.* while preserving reconstructed #IDs ---
+# --- Convert one ChosenID.N to ID.NNN; reconstructed #IDs are kept as is ---
 format_one_id <- function(x) {
   if (is.na(x) || !nzchar(x)) return(x)
   if (grepl("^#", x)) return(x)
@@ -130,6 +132,7 @@ format_one_id <- function(x) {
   }
   x
 }
+# --- Apply format_one_id to every ID of each ;-separated string ---
 format_chosen_ids <- function(x) {
   vapply(as.character(x), function(s) {
     if (is.na(s) || !nzchar(s)) return(NA_character_)
@@ -162,6 +165,7 @@ tcr_lib_dt[, id := as.character(id)]
 tcr_lib_dt[, criteria_simplified := as.character(criteria_simplified)]
 tcr_lib_dt[, tag_combination_controls := as.character(tag_combination_controls)]
 tcr_lib_dt[, reactivity := as.character(reactivity)]
+# --- Unique criteria tokens (split on ; and |), PD1/Tumor/Expanding first, joined by " | " ---
 simplify_criteria <- function(x) {
   x <- x[!is.na(x) & nzchar(x)]
   if (length(x) == 0) return(NA_character_)
@@ -173,6 +177,7 @@ simplify_criteria <- function(x) {
   tokens <- c(priority[priority %in% tokens], setdiff(tokens, priority))
   paste(tokens, collapse = " | ")
 }
+# --- Unique non-empty values joined by ";" (NA if none) ---
 collapse_unique <- function(x) {
   x <- unique(x[!is.na(x) & nzchar(x)])
   if (length(x) == 0) NA_character_ else paste(x, collapse = ";")
@@ -189,27 +194,32 @@ tcr_lib_dt <- tcr_lib_dt[
 criteria_map <- setNames(tcr_lib_dt$criteria_simplified, tcr_lib_dt$id)
 tag_map <- setNames(tcr_lib_dt$tag_combination_controls, tcr_lib_dt$id)
 reactivity_map <- setNames(tcr_lib_dt$reactivity, tcr_lib_dt$id)
+# --- IDs of a ;-separated string present in the library (uses global tcr_lib_dt) ---
 get_valid_ids <- function(x) {
   if (is.na(x) || !nzchar(x)) return(character(0))
   ids <- trimws(unlist(strsplit(x, ";", fixed = TRUE), use.names = FALSE))
   ids <- unique(ids[nzchar(ids)])
   ids[ids %in% tcr_lib_dt$id]
 }
+# --- Library IDs matched by a cell, joined by ";" ---
 collapse_tcrlib_ids <- function(x) {
   ids <- get_valid_ids(x)
   if (length(ids) == 0) return(NA_character_)
   paste(ids, collapse = ";")
 }
+# --- Simplified criteria of the matched library IDs (uses global criteria_map) ---
 collapse_tcrlib_criteria <- function(x) {
   ids <- get_valid_ids(x)
   if (length(ids) == 0) return(NA_character_)
   simplify_criteria(criteria_map[ids])
 }
+# --- Tag combinations of the matched library IDs (uses global tag_map) ---
 collapse_tcrlib_tags <- function(x) {
   ids <- get_valid_ids(x)
   if (length(ids) == 0) return(NA_character_)
   collapse_unique(tag_map[ids])
 }
+# --- Reactivity of the matched library IDs (uses global reactivity_map) ---
 collapse_tcrlib_reactivity <- function(x) {
   ids <- get_valid_ids(x)
   if (length(ids) == 0) return(NA_character_)
@@ -230,7 +240,7 @@ if (length(missing_reconstructed_ids) > 0) {
 ```
 
 ```{r}
-# --- Internal controls ---
+# --- TRUE where any ;-separated entry of x equals value ---
 has_reactivity <- function(x, value) {
   vapply(strsplit(ifelse(is.na(x), "", x), ";", fixed = TRUE), function(z) {
     value %in% trimws(z)
@@ -265,7 +275,7 @@ rownames(obj@meta.data) <- Cells(obj)
 
 # projecTILs
 
-Annotate T-cell functional states by mapping cells to the ProjecTILs human reference atlas: <https://github.com/carmonalab/ProjecTILs>
+Annotate T-cell functional states by mapping cells to the ProjecTILs human reference atlas: <https://github.com/carmonalab/ProjecTILs> Projection uses the SCT assay (DefaultAssay set in m01; skip.normalize = TRUE). In the Yossef et al. cohort (m01-data-load-yossef) CD8 cells are defined by scGate only and projected on log-normalized RNA, because that cohort has no MAGIC/pdfCluster step.
 
 ```{r}
 # --- ProjecTILs human reference maps (already downloaded in setup/refs) ---
@@ -306,6 +316,7 @@ TCRalpha/beta clonotype data.
 
 ```{r}
 obj@meta.data$cell_id <- rownames(obj@meta.data)
+# --- Strip allele suffix (*NN) and trailing "-1" from each ;-separated gene ---
 clean_multi_gene <- function(x) {
   x <- as.character(x)
   x <- strsplit(x, ";", fixed = TRUE)
@@ -324,9 +335,9 @@ chains_data <- obj@meta.data %>%
   select(cell_id, chains, cdr3, v_gene, j_gene) %>%
   mutate(
     chain_split = strsplit(as.character(chains), ";", fixed = TRUE),
-    cdr3_split  = strsplit(as.character(cdr3),  ";", fixed = TRUE),
-    v_split     = strsplit(as.character(v_gene), ";", fixed = TRUE),
-    j_split     = strsplit(as.character(j_gene), ";", fixed = TRUE)
+    cdr3_split = strsplit(as.character(cdr3), ";", fixed = TRUE),
+    v_split = strsplit(as.character(v_gene), ";", fixed = TRUE),
+    j_split = strsplit(as.character(j_gene), ";", fixed = TRUE)
   ) %>%
   rowwise() %>%
   mutate(
@@ -372,7 +383,7 @@ rm(chains_data)
 Fresh biopsy
 
 ```{r}
-biopsy_trb <- fread(file.path(datapath_load, "bulk", "tumor", "p136-Tfrozen_TCRB in frame.tsv")) %>%
+biopsy_trb <- fread(file.path(datapath_load, "bulk-tcrb", "tumor", "p136-Tfrozen_TCRB_in_frame.tsv")) %>%
   transmute(tcrb = str_c(aminoAcid, vMaxResolved, jMaxResolved, sep = "_")) %>%
   mutate(
     tcrb = str_replace_all(
@@ -410,7 +421,7 @@ Epitope species: "CMV", "EBV", "HCV", "HIV-1", "HomoSapiens", "InfluenzaA", "SAR
 
 ```{r}
 obj@meta.data$cell_id <- rownames(obj@meta.data)
-# TCRa
+# --- TCRa ---
 tra_vdjdb_orig <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_tra.tsv"), header = T)
 tra_vdjdb <- tra_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(tra_vdjdb) <- c("tra", "v_gene", "j_gene", "epitope_gene", "epitope_species")
@@ -418,13 +429,13 @@ tra_vdjdb$v_gene <- clean_multi_gene(tra_vdjdb$v_gene)
 tra_vdjdb$j_gene <- clean_multi_gene(tra_vdjdb$j_gene)
 tra_vdjdb$TCRa <- paste0(tra_vdjdb$tra, "_", tra_vdjdb$v_gene, "_", tra_vdjdb$j_gene)
 tra_vdjdb <- as.data.frame(tra_vdjdb) %>% distinct()
-tra_vdjdb <- tra_vdjdb %>% 
-  left_join(obj@meta.data %>% 
-  select(cell_id, TCRa), by = "TCRa") %>%
+tra_vdjdb <- tra_vdjdb %>%
+  left_join(obj@meta.data %>%
+    select(cell_id, TCRa), by = "TCRa") %>%
   filter(!is.na(cell_id)) %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "VDJdb_TRA")
-# TCRb
+# --- TCRb ---
 trb_vdjdb_orig <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_trb.tsv"), header = T)
 trb_vdjdb <- trb_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(trb_vdjdb) <- c("trb", "v_gene", "j_gene", "epitope_gene", "epitope_species")
@@ -432,14 +443,13 @@ trb_vdjdb$v_gene <- clean_multi_gene(trb_vdjdb$v_gene)
 trb_vdjdb$j_gene <- clean_multi_gene(trb_vdjdb$j_gene)
 trb_vdjdb$TCRb <- paste0(trb_vdjdb$trb, "_", trb_vdjdb$v_gene, "_", trb_vdjdb$j_gene)
 trb_vdjdb <- as.data.frame(trb_vdjdb) %>% distinct()
-trb_vdjdb <- trb_vdjdb %>% 
-  left_join(obj@meta.data %>% 
-  select(cell_id, TCRb), by = "TCRb") %>%
+trb_vdjdb <- trb_vdjdb %>%
+  left_join(obj@meta.data %>%
+    select(cell_id, TCRb), by = "TCRb") %>%
   filter(!is.na(cell_id)) %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "VDJdb_TRB")
-# TCR
-# Verify that the TRB+TRA sequences described at https://vdjdb.cdr3.net/search matches the TRB+TRA of the single-cell data (reconstructed TCR). To do this, download the data set with the CDR3 paired only option, reconstruct the TCR, and check for a match.
+# --- Paired TCR: VDJdb "CDR3 paired only" export, TRA+TRB rebuilt and matched to cells ---
 vdjdb_paired <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_paired.tsv"), header = T)
 complex.id <- unique(vdjdb_paired$complex.id)
 vdjdb_paired_tcr <- list()
@@ -453,9 +463,9 @@ for (i in complex.id) {
   specie_i <- unique(data_i$`Epitope species`)
   gene_i <- unique(data_i$`Epitope gene`)
   df_i <- data.frame(key = paste0(tcr_i, "|", v_gene, "|", j_gene),
-                     epitope_species = specie_i,
-                     epitope_gene = gene_i
-                     )
+    epitope_species = specie_i,
+    epitope_gene = gene_i
+  )
   vdjdb_paired_tcr[[as.character(i)]] <- df_i
   rm(data_i, tcr_i, specie_i, gene_i, df_i, i)
 }
@@ -468,9 +478,9 @@ tcr_vdjdb <- tcr_vdjdb %>%
     paste(bloques, collapse = "|")
   }))
 obj@meta.data$key <- paste0(obj$cdr3, "|", obj$v_gene, "|", obj$j_gene)
-tcr_vdjdb <- tcr_vdjdb %>% 
-  left_join(obj@meta.data %>% 
-  select(cell_id, key), by = "key") %>%
+tcr_vdjdb <- tcr_vdjdb %>%
+  left_join(obj@meta.data %>%
+    select(cell_id, key), by = "key") %>%
   filter(!is.na(cell_id)) %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "VDJdb_TCR")
@@ -481,25 +491,26 @@ iedb
 HLA-matched viral TCR https://iedb.org/
 
 ```{r, warning=FALSE, message=FALSE}
-# Download the whole database and filtered for HLA-compatible entries for both tcrb or tcra+tcrb.
+# --- Whole IEDB export, filtered to HLA-matched entries (TRB or TRA+TRB) ---
 tcr_iedb_data <- readxl::read_excel(file.path(aux_dir, "viral-databases", "iedb", "iedb_receptor_export_2024-04-16.xlsx"))
 tcr_iedb_data <- as.data.frame(tcr_iedb_data)
 tcr_iedb_data <- tcr_iedb_data %>% select(c("MHC Allele Names", "Type...13", "CDR3 Curated...24", "Type...42", "CDR3 Curated...53", "Source Organism", "Source Molecule"))
 tcr_iedb_data <- subset(tcr_iedb_data, tcr_iedb_data$`Source Organism` %in% c("Human herpesvirus 5 (Human cytomegalovirus)",
-                                                                              "Human herpesvirus 4 (Epstein Barr virus)",
-                                                                              "Hepatitis C virus",
-                                                                              "Human immunodeficiency virus 1 (human immunodeficiency virus 1 HIV-1)",
-                                                                              "Homo sapiens (human)",
-                                                                              "Influenza A virus",
-                                                                              "H1N1 subtype (H1N1)",
-                                                                              "SARS-CoV2"))
+  "Human herpesvirus 4 (Epstein Barr virus)",
+  "Hepatitis C virus",
+  "Human immunodeficiency virus 1 (human immunodeficiency virus 1 HIV-1)",
+  "Homo sapiens (human)",
+  "Influenza A virus",
+  "H1N1 subtype (H1N1)",
+  "SARS-CoV2"
+))
 tcr_iedb_data <- subset(tcr_iedb_data, tcr_iedb_data$`MHC Allele Names` %in% c("HLA-A*11:01", "HLA-B*35:01", "HLA-B*51:01", "HLA-C*04:01", "HLA-C*15:02"))
 tcr_iedb_data$`Source Organism` <- gsub("Homo sapiens \\(human\\)", "HomoSapiens", tcr_iedb_data$`Source Organism`)
 tcr_iedb_data$`Source Organism` <- gsub("Human herpesvirus 4 \\(Epstein Barr virus\\)", "EBV", tcr_iedb_data$`Source Organism`)
 tcr_iedb_data$`Source Organism` <- gsub("Human herpesvirus 5 \\(Human cytomegalovirus\\)", "CMV", tcr_iedb_data$`Source Organism`)
 tcr_iedb_data$`Source Organism` <- gsub("Human immunodeficiency virus 1 \\(human immunodeficiency virus 1 HIV-1\\)", "HIV-1", tcr_iedb_data$`Source Organism`)
 tcr_iedb_data$`Source Organism` <- gsub("SARS-CoV2", "SARS-CoV-2", tcr_iedb_data$`Source Organism`)
-#TCRa
+# --- TCRa ---
 tra_iedb <- tcr_iedb_data[complete.cases(tcr_iedb_data$`CDR3 Curated...24`), ]
 tra_iedb <- tra_iedb %>% select(`CDR3 Curated...24`, `Source Organism`, `Source Molecule`) %>% distinct()
 colnames(tra_iedb) <- c("TRA", "epitope_species", "epitope_gene")
@@ -512,12 +523,12 @@ meta_data_with_tra <- obj@meta.data %>%
     ),
     cell_id = rownames(.)
   ) %>% select(cell_id, TRA)
-tra_iedb <- tra_iedb %>% 
+tra_iedb <- tra_iedb %>%
   left_join(meta_data_with_tra %>% select(cell_id, TRA), by = "TRA") %>%
   filter(!is.na(cell_id)) %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "IEDB_TRA")
-#TCRb
+# --- TCRb ---
 trb_iedb <- tcr_iedb_data[complete.cases(tcr_iedb_data$`CDR3 Curated...53`), ]
 trb_iedb <- trb_iedb %>% select(`CDR3 Curated...53`, `Source Organism`, `Source Molecule`) %>% distinct()
 colnames(trb_iedb) <- c("TRB", "epitope_species", "epitope_gene")
@@ -530,12 +541,12 @@ meta_data_with_trb <- obj@meta.data %>%
     ),
     cell_id = rownames(.)
   ) %>% select(cell_id, TRB)
-trb_iedb <- trb_iedb %>% 
+trb_iedb <- trb_iedb %>%
   left_join(meta_data_with_trb %>% select(cell_id, TRB), by = "TRB") %>%
   filter(!is.na(cell_id)) %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "IEDB_TRB")
-rm(tcr_iedb_data, tcr_iedb_data_complete, trb_iedb_clon, trb_iedb_paired_tcr_clon, trb_vdjdb_clon, trb_vdjdb_paired_tcr_clon, meta_data_with_tra, meta_data_with_trb)
+rm(tcr_iedb_data, meta_data_with_tra, meta_data_with_trb)
 ```
 
 Combine all viral TRB and TRB+TRA from different databases and annotate epitope specie and gene for matching cells.
@@ -544,13 +555,13 @@ Combine all viral TRB and TRB+TRA from different databases and annotate epitope 
 viral_info <- bind_rows(tra_vdjdb, trb_vdjdb, tcr_vdjdb, tra_iedb, trb_iedb) %>%
   group_by(cell_id) %>%
   summarise(across(c(epitope_species, epitope_gene, match),
-                   ~ paste(unique(.), collapse = ";")),
-            .groups = "drop") %>%
+    ~ paste(unique(.), collapse = ";")),
+    .groups = "drop") %>%
   dplyr::rename(database = match)
 obj@meta.data <- obj@meta.data %>%
   left_join(viral_info, by = "cell_id") %>%
   mutate(across(c(epitope_species, epitope_gene, database),
-                ~ if_else(epitope_species %in% c("EBV","CMV"), ., NA_character_))) %>%
+    ~ if_else(epitope_species %in% c("EBV", "CMV"), ., NA_character_))) %>%
   column_to_rownames("cell_id")
 rm(tcr_vdjdb, tra_iedb, tra_vdjdb, trb_iedb, trb_vdjdb, viral_info)
 ```
@@ -570,7 +581,7 @@ rm(idx)
 
 # signatures
 
-Cell-cycle score + Yossef's gene-signature scores for tumor-reactive PBLs @ Cancer Cell Table S5
+Cell-cycle scores (scGate G1/S and G2/M) + published signatures in `published_signatures.tsv` (Oliveira, Lowery, Yossef, Hanada, TRTPBL), scored with UCell on RNA.
 
 ```{r}
 signatures <- fread(file.path(aux_dir, "signatures", "published_signatures.tsv"), header = TRUE)
@@ -582,10 +593,9 @@ sigs <- c(
     cycling.g2 = as.vector(scGate::genes.blacklist.default$Hs$cellCycle.G2M)
   )
 )
-signature.names <- paste0(names(sigs), "_UCell")
 set.seed(SEED)
-obj <- AddModuleScore_UCell(obj, assay = "RNA", features = sigs, ncores=REPRO_NCORES)
-rm(sigs, signature.names)
+obj <- AddModuleScore_UCell(obj, assay = "RNA", features = sigs, ncores = REPRO_NCORES)
+rm(sigs)
 ```
 
 # scRepertoire
@@ -593,7 +603,7 @@ rm(sigs, signature.names)
 <https://www.bioconductor.org/packages/devel/bioc/vignettes/scRepertoire/inst/doc/vignette.html#8_Combining_Clones_and_Single-Cell_Objects>
 
 ```{r}
-folder_data <- "rootpath"
+folder_data <- file.path("single-cell", "rootpath")
 object_files_rp <- list.files(file.path(datapath_load, folder_data))
 object_tags_rp <- c("post2_bulk1", "post2_bulk2", "post2_bulk3", "post2_pd1", "pre_bulk1", "pre_bulk2", "pre_bulk3", "pre_pd1")
 data_repertoire_rp <- list()
@@ -605,7 +615,7 @@ for (i in seq_along(object_files_rp)) {
   tcr$c_gene <- clean_multi_gene(tcr$c_gene)
   data_repertoire_rp[[as.character(object_tags_rp[[i]])]] <- tcr
 }
-folder_data <- "vhio"
+folder_data <- file.path("single-cell", "vhio")
 object_files_vh <- list.files(file.path(datapath_load, folder_data))
 object_tags_vhio <- c("post1_bulk", "post1_pd1", "post6_bulk", "post6_pd1")
 data_repertoire_vhio <- list()
@@ -619,18 +629,19 @@ for (i in seq_along(object_files_vh)) {
 }
 data_repertoire <- c(data_repertoire_rp, data_repertoire_vhio)
 samples <- c(object_files_rp, object_files_vh)
-combined.TCR <- combineTCR(data_repertoire, 
-                           samples = c(object_tags_rp, object_tags_vhio),
-                           removeNA = FALSE,
-                           removeMulti = FALSE, 
-                           filterMulti = FALSE)
+combined.TCR <- combineTCR(data_repertoire,
+  samples = c(object_tags_rp, object_tags_vhio),
+  removeNA = FALSE,
+  removeMulti = FALSE,
+  filterMulti = FALSE
+)
 sce_count_data <- combineExpression(combined.TCR,
-                                    obj,
-                                    cloneCall="gene",
-                                    group.by = "sample",
-                                    proportion = FALSE,
-                                    cloneSize=c(Single=1, Small=5, Medium=20, Large=100, Hyperexpanded=500)
-                                    )
+  obj,
+  cloneCall = "gene",
+  group.by = "sample",
+  proportion = FALSE,
+  cloneSize = c(Single = 1, Small = 5, Medium = 20, Large = 100, Hyperexpanded = 500)
+)
 obj@meta.data <- sce_count_data@meta.data
 ```
 
@@ -642,7 +653,7 @@ obj@meta.data <- sce_count_data@meta.data
 obj.cd8 <- subset(obj, subset = celltype == "cd8")
 ```
 
-Bulk + PD^1
+Bulk + PD-1^hi
 
 Step 1. Distribution of the annotation scores and identification of the cut-offs that allow the annotation of e.g. 50% of the cell (recommended by Massimo Andreatta).
 
@@ -651,15 +662,15 @@ med_dist <- list()
 med_plots <- list()
 phenotype <- names(table(obj.cd8$functional.cluster))
 for (i in phenotype) {
-    obj_i <- subset(obj.cd8, subset = functional.cluster == i)
-    median_i <- median(obj_i@meta.data$functional.cluster.conf, na.rm = TRUE)
-    med_dist[[i]] <- median_i
-    plot_i <- ggplot(obj_i@meta.data, aes_string(x = "functional.cluster.conf")) + 
-              geom_density() + 
-              geom_vline(xintercept = median_i, linetype = "dashed", color = "red3") + 
-              labs(title = paste(i, "\nmedian =", round(median_i, 2))) +
-      theme(aspect.ratio = 1)
-    med_plots[[i]] <- plot_i
+  obj_i <- subset(obj.cd8, subset = functional.cluster == i)
+  median_i <- median(obj_i@meta.data$functional.cluster.conf, na.rm = TRUE)
+  med_dist[[i]] <- median_i
+  plot_i <- ggplot(obj_i@meta.data, aes_string(x = "functional.cluster.conf")) +
+    geom_density() +
+    geom_vline(xintercept = median_i, linetype = "dashed", color = "red3") +
+    labs(title = paste(i, "\nmedian =", round(median_i, 2))) +
+    theme(aspect.ratio = 1)
+  med_plots[[i]] <- plot_i
 }
 plots_list[["IC01_cd8_confidence_density"]] <- wrap_plots(med_plots, ncol = 4)
 print(plots_list$IC01_cd8_confidence_density)
@@ -669,7 +680,7 @@ Step 2. Reassign annotations based on their confidence score. All cells below th
 
 ```{r}
 obj.cd8$functional.cluster_stacas <- "unknown"
-for (i in phenotype){
+for (i in phenotype) {
   threshold <- med_dist[[i]]
   obj.cd8$functional.cluster_stacas <- ifelse(obj.cd8$functional.cluster == i & obj.cd8$functional.cluster.conf >= threshold, obj.cd8$functional.cluster, obj.cd8$functional.cluster_stacas)
 }
@@ -677,13 +688,13 @@ rm(phenotype, threshold, i, med_dist)
 DefaultAssay(obj.cd8) <- "SCT"
 ```
 
-Step 3. Identify variable features across all datasets. Also add variable features from projecTILs that fall into the top-1500 variable genes. Guided by the authors.
+Step 3. Identify variable features across all datasets. Add the genes of the ProjecTILs reference (integrated assay) to the anchor features. Guided by the authors.
 
 ```{r}
 obj.cd8.list <- SplitObject(obj.cd8, split.by = "sample")
 obj.cd8.list <- lapply(obj.cd8.list, function(x) {FindVariableFeatures.STACAS(x, nfeat = 1500, genesBlockList = genes.blacklist.default$Hs)})
 varfeat <- SelectIntegrationFeatures(object.list = obj.cd8.list, nfeatures = 1500)
-# ProjecTILs reference matching the compartment prefix (cd8_int -> CD8T)
+# --- ProjecTILs reference matching the compartment prefix (cd8_int -> CD8T) ---
 compartment <- "cd8_int"
 ref_name <- paste0(toupper(sub("_.*", "", compartment)), "T")
 ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", paste0(ref_name, "_human_ref_v1.rds")))
@@ -691,7 +702,7 @@ varfeat <- unique(c(varfeat, row.names(ref.use@assays$integrated)))
 rm(ref.use, ref_name)
 ```
 
-Step 4. Loop STACAS pipeline for different annotations:
+Step 4. Semi-supervised STACAS integration (cell.labels = functional.cluster_stacas):
 <https://carmonalab.github.io/STACAS.demo/STACAS.demo.html#one-liner-stacas>
 <https://github.com/carmonalab/STACAS/blob/master/R/main.R>
 
@@ -704,26 +715,26 @@ ndim <- 8
 res <- 0.75
 set.seed(SEED)
 obj.cd8.int <- Run.STACAS(obj.cd8.list,
-                      assay = rep("SCT", length(obj.cd8.list)),
-                      new.assay.name = "STACAS",
-                      reference = NULL,
-                      max.seed.objects = ndim,
-                      min.sample.size = 100,
-                      anchor.features = varfeat,
-                      genesBlockList = genes.blacklist.default$Hs,
-                      dims = ndim,
-                      k.anchor = 5,
-                      k.score = 30,
-                      k.weight = 75,
-                      alpha = 0.7,
-                      anchor.coverage = 0.5,
-                      correction.scale = 1.5,
-                      cell.labels = "functional.cluster_stacas",
-                      label.confidence = 0.95,
-                      scale.data = FALSE,
-                      hclust.method = "complete",
-                      seed = SEED,
-                      verbose = FALSE
+  assay = rep("SCT", length(obj.cd8.list)),
+  new.assay.name = "STACAS",
+  reference = NULL,
+  max.seed.objects = ndim,
+  min.sample.size = 100,
+  anchor.features = varfeat,
+  genesBlockList = genes.blacklist.default$Hs,
+  dims = ndim,
+  k.anchor = 5,
+  k.score = 30,
+  k.weight = 75,
+  alpha = 0.7,
+  anchor.coverage = 0.5,
+  correction.scale = 1.5,
+  cell.labels = "functional.cluster_stacas",
+  label.confidence = 0.95,
+  scale.data = FALSE,
+  hclust.method = "complete",
+  seed = SEED,
+  verbose = FALSE
 )
 ```
 
@@ -793,7 +804,6 @@ obj.cd8.nn <- NormalizeData(
   verbose = FALSE
 )
 Layers(obj.cd8.nn[["RNA"]])
-
 # --- Identify markers ---
 Idents(obj.cd8.nn) <- obj.cd8.nn[[cluster_col, drop = TRUE]]
 markers.cd8.nn <- FindAllMarkers(
@@ -817,7 +827,6 @@ top.markers.cd8.nn <- markers.cd8.nn %>%
   slice_max(order_by = avg_log2FC, n = 50, with_ties = FALSE) %>%
   ungroup() %>%
   select(cluster, gene, avg_log2FC, pct.1, pct.2, p_val_adj)
-
 # --- Generate a list for annotation ---
 n_top <- 50
 fc_col <- if ("avg_log2FC" %in% colnames(markers.cd8.nn)) "avg_log2FC" else "avg_logFC"
@@ -838,41 +847,49 @@ marker_list.cd8.nn <- markers.cd8.nn %>%
   arrange(as.numeric(as.character(cluster))) %>%
   mutate(line = paste0(cluster, ": ", markers))
 cat(paste(marker_list.cd8.nn$line, collapse = "\n"))
-
 ```
 
-Manually annotation
+Manual annotation
 
-CD8 TCM = basal/quiescent central memory; low cytotoxicity; TCF7/CD28/IL7R/SELL-like.
-CD8 activated TCM-like = recently activated central-memory-like cells; still low-to-intermediate cytotoxicity; EGR1/AREG/SOCS3/CD83/NFKBIA-like activation.
-CD8 activated TEM = activated effector-memory cells; intermediate cytotoxicity; GZMK/GZMA with HLA-II activation signature.
+CD8 TCM = central memory; low cytotoxicity; TCF7/CD28/IL7R/SELL/CCR7. Clusters 1 and 7 (CD8.CM in ProjecTILs) differ only in immediate-early genes (FOS/JUN/CD69/EGR1 high in cluster 1), so they are merged.
+CD8 LEF1+ ZNF683+ = innate-like CD8 cells; LEF1/ZNF683 with IKZF2/KLRC2/KLRC3/TXK/XCL1.
+CD8 activated TEM GZMK+ = activated effector-memory cells; intermediate cytotoxicity; GZMK/GZMA with HLA-II activation signature.
+CD8 TEM KLRG1+ = effector memory transitioning to TEMRA; KLRG1/EOMES/CD160/CMC1/CCL4 with low GZMB (mixed CM/EM/TEMRA in ProjecTILs).
 CD8 TEMRA FGFBP2+ = highly cytotoxic terminal effector/TEMRA cells; strong FGFBP2/GZMB/GZMH/GNLY/PRF1/KLRD1/TBX21 program.
 CD8 TEMRA LILRB1+ = terminal cytotoxic TEMRA-like cells with inhibitory/NK-like features; LILRB1/FCGR3A/ADGRG1/ZEB2 with GNLY/GZMB.
-Proliferating CD8 T cells = cycling activated CD8 cells; proliferation-dominant rather than purely cytotoxic; MKI67/PCLAF/STMN1/MCM/NUSAP1-high.
+CD8 activated/proliferating = acutely activated and cycling CD8 cells; CD38/HLA-DR/CTLA4/IRF4 activation (cluster 5) and MKI67/CDK1/CCNA2/E2F1 cell cycle (cluster 9).
 
 ```{r}
 obj.cd8.nn$manual.annotation <- dplyr::recode(
   as.character(obj.cd8.nn$STACAS_snn_res.0.5),
-  "0" = "CD8 activated TEM GZMK+",
+  "0" = "CD8 TEMRA FGFBP2+",
   "1" = "CD8 TCM",
-  "2" = "CD8 TEMRA FGFBP2+",
-  "3" = "CD8 TEMRA LILRB1+",
-  "4" = "CD8 proliferating",
-  "5" = "CD8 activated TCM-like",
-  "6" = "CD8 LEF1+ ZNF683+",
+  "2" = "CD8 activated TEM GZMK+",
+  "3" = "CD8 activated TEM GZMK+",
+  "4" = "CD8 TEMRA LILRB1+",
+  "5" = "CD8 activated/proliferating",
+  "6" = "CD8 TEM KLRG1+",
+  "7" = "CD8 TCM",
+  "8" = "CD8 LEF1+ ZNF683+",
+  "9" = "CD8 activated/proliferating",
   .default = NA_character_
 )
 obj.cd8.nn$manual.annotation <- factor(
   obj.cd8.nn$manual.annotation,
   levels = c(
     "CD8 TCM",
-    "CD8 activated TCM-like",
-    "CD8 activated TEM GZMK+",
     "CD8 LEF1+ ZNF683+",
+    "CD8 activated TEM GZMK+",
+    "CD8 TEM KLRG1+",
     "CD8 TEMRA FGFBP2+",
     "CD8 TEMRA LILRB1+",
-    "CD8 proliferating"
+    "CD8 activated/proliferating"
   )
+)
+# --- The recode is tied to the cluster numbering: stop if the integration changes it ---
+stopifnot(
+  length(unique(obj.cd8.nn$STACAS_snn_res.0.5)) == 10,
+  !anyNA(obj.cd8.nn$manual.annotation)
 )
 plots_list[["IC04_cd8_int_nn_manual_annotation"]] <- DimPlot(
   obj.cd8.nn,
@@ -885,7 +902,6 @@ plots_list[["IC04_cd8_int_nn_manual_annotation"]] <- DimPlot(
   cols = manual_colors
 ) + theme(aspect.ratio = 1)
 print(plots_list$IC04_cd8_int_nn_manual_annotation)
-
 # --- Save with the manual annotations ---
 saveRDS(obj.cd8.nn, file.path(int_dir, "seurat/cd8_int_nn.rds"))
 ```
@@ -895,16 +911,17 @@ Internal control
 ```{r}
 criteria_patterns <- c(
   "Expanding" = "Expanding",
-  "PD1"       = "PD[-_ ]?1|PD1",
-  "Tumor"     = "Tumor",
-  "Frequent"  = "Frequent"
+  "PD1" = "PD[-_ ]?1|PD1",
+  "Tumor" = "Tumor",
+  "Frequent" = "Frequent"
 )
 criteria_colors <- c(
   "Expanding" = "red3",
-  "PD1"       = "#5B2A86",
-  "Tumor"     = "#E76F51",
-  "Frequent"  = "#4C78A8"
+  "PD1" = "#5B2A86",
+  "Tumor" = "#E76F51",
+  "Frequent" = "#4C78A8"
 )
+# --- UMAP faceted by time, highlighting cells whose criteria_simplified matches pattern ---
 make_criteria_plot_by_time <- function(obj, pattern, label, color, reduction = "umap") {
   emb <- Embeddings(obj, reduction = reduction)[, 1:2]
   plot_df <- data.frame(
@@ -1032,15 +1049,15 @@ med_dist <- list()
 med_plots <- list()
 phenotype <- names(table(obj.cd4$functional.cluster))
 for (i in phenotype) {
-    obj_i <- subset(obj.cd4, subset = functional.cluster == i)
-    median_i <- median(obj_i@meta.data$functional.cluster.conf, na.rm = TRUE)
-    med_dist[[i]] <- median_i
-    plot_i <- ggplot(obj_i@meta.data, aes_string(x = "functional.cluster.conf")) + 
-              geom_density() + 
-              geom_vline(xintercept = median_i, linetype = "dashed", color = "red3") + 
-              labs(title = paste(i, "\nmedian =", round(median_i, 2))) +
-      theme(aspect.ratio = 1)
-    med_plots[[i]] <- plot_i
+  obj_i <- subset(obj.cd4, subset = functional.cluster == i)
+  median_i <- median(obj_i@meta.data$functional.cluster.conf, na.rm = TRUE)
+  med_dist[[i]] <- median_i
+  plot_i <- ggplot(obj_i@meta.data, aes_string(x = "functional.cluster.conf")) +
+    geom_density() +
+    geom_vline(xintercept = median_i, linetype = "dashed", color = "red3") +
+    labs(title = paste(i, "\nmedian =", round(median_i, 2))) +
+    theme(aspect.ratio = 1)
+  med_plots[[i]] <- plot_i
 }
 plots_list[["IC08_cd4_confidence_density"]] <- wrap_plots(med_plots, ncol = 4)
 print(plots_list$IC08_cd4_confidence_density)
@@ -1050,7 +1067,7 @@ Step 2. Reassign annotations based on their confidence score. All cells below th
 
 ```{r}
 obj.cd4$functional.cluster_stacas <- "unknown"
-for (i in phenotype){
+for (i in phenotype) {
   threshold <- med_dist[[i]]
   obj.cd4$functional.cluster_stacas <- ifelse(obj.cd4$functional.cluster == i & obj.cd4$functional.cluster.conf >= threshold, obj.cd4$functional.cluster, obj.cd4$functional.cluster_stacas)
 }
@@ -1058,13 +1075,13 @@ rm(phenotype, threshold, i, med_dist)
 DefaultAssay(obj.cd4) <- "SCT"
 ```
 
-Step 3. Identify variable features across all datasets. Also add variable features from projecTILs that fall into the top-1500 variable genes. Guided by the authors.
+Step 3. Identify variable features across all datasets. Add the genes of the ProjecTILs reference (integrated assay) to the anchor features. Guided by the authors.
 
 ```{r}
 obj.cd4.list <- SplitObject(obj.cd4, split.by = "sample")
 obj.cd4.list <- lapply(obj.cd4.list, function(x) {FindVariableFeatures.STACAS(x, nfeat = 1500, genesBlockList = genes.blacklist.default$Hs)})
 varfeat <- SelectIntegrationFeatures(object.list = obj.cd4.list, nfeatures = 1500)
-# ProjecTILs reference matching the compartment prefix (cd4_int -> CD4T)
+# --- ProjecTILs reference matching the compartment prefix (cd4_int -> CD4T) ---
 compartment <- "cd4_int"
 ref_name <- paste0(toupper(sub("_.*", "", compartment)), "T")
 ref.use <- load.reference.map(ref = file.path(project_dir, "setup", "refs", paste0(ref_name, "_human_ref_v1.rds")))
@@ -1072,7 +1089,7 @@ varfeat <- unique(c(varfeat, row.names(ref.use@assays$integrated)))
 rm(ref.use, ref_name)
 ```
 
-Step 4. Loop STACAS pipeline for different annotations:
+Step 4. Semi-supervised STACAS integration (cell.labels = functional.cluster_stacas):
 <https://carmonalab.github.io/STACAS.demo/STACAS.demo.html#one-liner-stacas>
 <https://github.com/carmonalab/STACAS/blob/master/R/main.R>
 
@@ -1085,26 +1102,26 @@ ndim <- 8
 res <- 0.75
 set.seed(SEED)
 obj.cd4.int <- Run.STACAS(obj.cd4.list,
-                      assay = rep("SCT", length(obj.cd4.list)),
-                      new.assay.name = "STACAS",
-                      reference = NULL,
-                      max.seed.objects = ndim,
-                      min.sample.size = 100,
-                      anchor.features = varfeat,
-                      genesBlockList = genes.blacklist.default$Hs,
-                      dims = ndim,
-                      k.anchor = 5,
-                      k.score = 30,
-                      k.weight = 75,
-                      alpha = 0.7,
-                      anchor.coverage = 0.5,
-                      correction.scale = 1.5,
-                      cell.labels = "functional.cluster_stacas",
-                      label.confidence = 0.95,
-                      scale.data = FALSE,
-                      hclust.method = "complete",
-                      seed = SEED,
-                      verbose = FALSE
+  assay = rep("SCT", length(obj.cd4.list)),
+  new.assay.name = "STACAS",
+  reference = NULL,
+  max.seed.objects = ndim,
+  min.sample.size = 100,
+  anchor.features = varfeat,
+  genesBlockList = genes.blacklist.default$Hs,
+  dims = ndim,
+  k.anchor = 5,
+  k.score = 30,
+  k.weight = 75,
+  alpha = 0.7,
+  anchor.coverage = 0.5,
+  correction.scale = 1.5,
+  cell.labels = "functional.cluster_stacas",
+  label.confidence = 0.95,
+  scale.data = FALSE,
+  hclust.method = "complete",
+  seed = SEED,
+  verbose = FALSE
 )
 ```
 
@@ -1134,14 +1151,22 @@ saveRDS(obj.cd4.int, file.path(int_dir, "seurat/cd4_int.rds"))
 Save plots.
 
 ```{r, warning=FALSE}
-plot_dir <- file.path(int_dir, "plots")
+plot_dir <- file.path(int_dir, "plots-qc")
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+# --- PDF size (width, height in inches) per plot; default fits two square UMAPs side by side ---
+plot_sizes <- list(
+  IC01_cd8_confidence_density = c(12, 6.5),
+  IC04_cd8_int_nn_manual_annotation = c(8, 6),
+  IC05_cd8_int_nn_criteria = c(10, 11),
+  IC08_cd4_confidence_density = c(12, 9.5)
+)
 for (i in names(plots_list)) {
-  pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)
+  size_i <- if (is.null(plot_sizes[[i]])) c(13, 6) else plot_sizes[[i]]
+  pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = size_i[1], height = size_i[2])
   print(plots_list[[i]])
   dev.off()
 }
-rm(plot_dir)
+rm(plot_dir, plot_sizes, size_i)
 ```
 
 ```{r, warning=FALSE}

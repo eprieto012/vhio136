@@ -1,0 +1,128 @@
+---
+title: "script-volcano-plots-TCL"
+author: "Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-10-29"
+output: html_document
+---
+
+# setup
+
+Volcano plots of the TCR library screen, from the edgeR tables of `script-hit-identification-TCL.Rmd`.
+
+```{r setup, message=FALSE, warning=FALSE}
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(RColorBrewer)
+  library(ggrepel)
+  library(patchwork)
+})
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
+results_dir <- file.path(project_dir, "results", "tcr-library")
+edger_dir <- file.path(results_dir, "edger")
+plot_list <- list()
+```
+
+# hits
+
+Three panels: the relevant (RIO136) library, the irrelevant (RIO008) library used as a specificity
+control, and the B-cell positive control.
+
+A TCR called as a hit in all three comparisons (relevant, irrelevant and B-cell) is enriched regardless
+of the target, so it is not antigen-specific: the highlighted hits are those called in `relevant` minus
+those shared by the three. The irrelevant panel highlights nothing: no hit is expected there.
+
+```{r}
+# --- Read the hits file of an edgeR comparison (uses edger_dir) ---
+read_hits <- function(comparison, file) {
+  path <- file.path(edger_dir, comparison, file)
+  if (!file.exists(path)) stop("Missing hits file (run script-hit-identification-TCL.Rmd first): ", path)
+  readLines(path)
+}
+relevant_hits <- read_hits("relevant", "relevant_pos_hits.txt")
+bcell_hits <- read_hits("positive", "positive_hits.txt")
+irrelevant_hits <- read_hits("irrelevant", "irrelevant_pos_hits.txt")
+hits <- list(
+  relevant = setdiff(relevant_hits, Reduce(intersect, list(relevant_hits, irrelevant_hits, bcell_hits))),
+  irrelevant = NULL,
+  positive = c("NKI.CDK.53_mutCDK4", "PMEL17_gp100")
+)
+cat("relevant hits:", length(relevant_hits), "->", length(hits$relevant),
+    "after removing the ones called in all three comparisons:",
+    paste(setdiff(relevant_hits, hits$relevant), collapse = ", "), "\n")
+write.table(hits$relevant, file = file.path(results_dir, "relevant_hits_specific.txt"),
+            quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+```
+
+# plots
+
+```{r, warning=FALSE}
+for (i in names(hits)) {
+  folder <- i
+  file <- paste0(folder, ".txt")
+  data <- read.table(file = file.path(edger_dir, folder, file), header = TRUE, sep = "\t") %>%
+    mutate(
+      highlight = ifelse(TCR %in% hits[[folder]], TCR, "no_hits"),
+      is_no_hit = highlight == "no_hits",
+      significant_hit = !is_no_hit & FDR <= 0.05 & logFC > 1.5
+    )
+  tcr_signif <- unique(data$highlight[data$significant_hit])
+  palette_blues <- brewer.pal(9, "Set1")[1:7]
+  colors_tcr <- setNames(colorRampPalette(palette_blues)(length(tcr_signif)), tcr_signif)
+  write.table(x = as.data.frame(colors_tcr), sep = "\t",
+              file = file.path(edger_dir, folder, paste0("color_palette_", i, ".txt")))
+  colors_tcr["no_hits"] <- "gray90"
+  data <- data %>%
+    mutate(
+      alpha = ifelse(FDR <= 0.05 & logFC > 1.5, 1, 0.5),
+      fill_color = case_when(
+        is_no_hit & !(FDR <= 0.05 & logFC > 1.5) ~ "white",
+        is_no_hit ~ "gray90",
+        !is_no_hit ~ colors_tcr[highlight],
+        TRUE ~ NA_character_
+      )
+    )
+  data <- data[order(data$is_no_hit, decreasing = TRUE), ]
+  plot <- ggplot(data, aes(x = logFC, y = logFDR)) +
+    geom_point(
+      aes(fill = fill_color, shape = is_no_hit, alpha = alpha),
+      color = "black", stroke = 0.1,
+      size = ifelse(data$is_no_hit, 2, 4),
+      na.rm = TRUE
+    ) +
+    scale_shape_manual(values = c("TRUE" = 21, "FALSE" = 21)) +
+    scale_fill_identity() +
+    scale_alpha_identity() +
+    geom_vline(xintercept = 0, linetype = "solid", color = "black", linewidth = 0.1) +
+    geom_vline(xintercept = 1.5, linetype = "dashed", color = "gray30", linewidth = 0.5) +
+    geom_hline(yintercept = 1.30103, linetype = "dashed", color = "gray30", linewidth = 0.5) +
+    labs(title = folder, x = "logFC", y = "logFDR") +
+    xlim(-5, 5) +
+    scale_y_continuous(expand = c(0, 0), limits = c(-1, 20)) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid = element_blank(),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.1),
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white", color = NA),
+      legend.position = "none",
+      aspect.ratio = 1.25
+    )
+  plot_list[[i]] <- plot
+  # --- Each panel on its own, next to the edgeR results of its comparison ---
+  pdf(file = file.path(edger_dir, folder, paste0("volcano_", i, ".pdf")),
+      width = 297 / 60, height = 210 / 40)
+  print(plot)
+  dev.off()
+}
+# --- The three panels together ---
+pdf(file = file.path(results_dir, "volcano.pdf"), width = 297 / 20, height = 210 / 20)
+print(wrap_plots(plot_list, ncol = 3, nrow = 1))
+dev.off()
+rm(i, folder, file, data, tcr_signif, palette_blues, colors_tcr, plot)
+```
+
+```{r}
+print("Plots saved successfully.")
+```

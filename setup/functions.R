@@ -1,4 +1,4 @@
-# --- Custom functions ---
+# --- One UMAP panel per group, highlighted over the rest in gray ---
 plot_umap_shadow <- function(object, group_var, color_vector, na_value = "none", ncol = 4) {
   plot_data <- FetchData(object, vars = c("umap_1", "umap_2", group_var)) %>%
     mutate(
@@ -24,6 +24,7 @@ plot_umap_shadow <- function(object, group_var, color_vector, na_value = "none",
   wrap_plots(plot_list, ncol = ncol)
 }
 
+# --- Stacked bars of category percentages per cluster plus pie charts ---
 plot_cluster_percentages <- function(object,
   clusters = NULL,
   category = NULL,
@@ -32,7 +33,8 @@ plot_cluster_percentages <- function(object,
   horizontal = FALSE,
   limits = NULL,
   exclude = NULL,
-  remove = TRUE) {
+  remove = TRUE
+) {
   data <- FetchData(object, vars = c(clusters, category))
   if (remove) {
     data <- data %>%
@@ -57,13 +59,16 @@ plot_cluster_percentages <- function(object,
     ungroup()
   p <- ggplot(counts, aes_string(x = clusters, y = "percentage", fill = category)) +
     geom_bar(stat = "identity", position = "stack", color = "black", linewidth = 0.2) +
-    labs(x = clusters, y = "Percentage", fill = category, title = title) +
+    labs(x = NULL, y = "Percentage", fill = category, title = title) +
     scale_fill_manual(values = colors) +
     theme_minimal() +
     theme(
       aspect.ratio = 1,
       panel.grid = element_blank()
     )
+  if (!horizontal) {
+    p <- p + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+  }
   if (!is.null(limits)) {
     p <- p + ylim(limits)
   }
@@ -86,6 +91,7 @@ plot_cluster_percentages <- function(object,
   wrap_plots(p, q, widths = c(2, 1))
 }
 
+# --- Boxplot of a feature per group, ordered by median, with Wilcoxon tests ---
 plot_box_with_stats <- function(seurat_object,
   feature,
   group_by,
@@ -134,48 +140,7 @@ plot_box_with_stats <- function(seurat_object,
     )
 }
 
-run_GSEA <- function(filt.object,
-  tags,
-  timepoints,
-  categories = c("H", "C2", "C3", "C4", "C5", "C6", "C7", "C8")
-) {
-  data <- subset(object, time %in% timepoints)
-  data <- subset(data, category %in% tags)
-  markers.genes <- wilcoxauc(X = data, annotations)
-  markers.genes$log10p <- -log10(markers.genes$padj)
-  markers.genes <- markers.genes %>%
-    filter(padj <= 0.05, group == "Reactive") %>%
-    arrange(desc(logFC)) %>%
-    select(feature, logFC, log10p)
-  ranks <- deframe(markers.genes)
-  barplot(sort(ranks, decreasing = TRUE), main = "Gene Ranking")
-  GSEA <- list()
-  for (cat in categories) {
-    m_df <- msigdbr(species = "Homo sapiens", category = cat)
-    fgsea_sets <- split(m_df$gene_symbol, m_df$gs_name)
-    fgseaRes <- fgsea(fgsea_sets, ranks, maxSize = 500)
-    GSEA[[cat]] <- fgseaRes[order(fgseaRes$padj, abs(fgseaRes$NES)), ]
-  }
-  return(GSEA)
-}
-
-extract_significant_fgsea_sets <- function(GSEA_results,
-  categories = names(GSEA_results),
-  padj_cutoff = 0.05
-) {
-  all_signatures <- list()
-  for (cat in categories) {
-    gsea_df <- GSEA_results[[cat]]
-    sig_paths <- gsea_df$pathway[gsea_df$padj < padj_cutoff]
-    if (length(sig_paths) == 0) next
-    m_df <- msigdbr::msigdbr(species = "Homo sapiens", category = cat)
-    fgsea_sets <- split(m_df$gene_symbol, m_df$gs_name)
-    sig_sets <- fgsea_sets[sig_paths]
-    all_signatures <- c(all_signatures, sig_sets)
-  }
-  return(all_signatures)
-}
-
+# --- Violins of signature scores marking the top-N clonotypes and reactive ones found among them ---
 plot_reactive_top <- function(
   object,
   pivot_cols = NULL,
@@ -400,11 +365,13 @@ plot_reactive_top <- function(
   )
 }
 
+# --- Reactive matched IDs found vs TCRs tested, by signature ranking and at random ---
 plot_reactive_tcrs_vs_tested <- function(object,
   step = 25,
   max_n = 250,
   pivot_cols = NULL,
-  title = "Reactivity Enrichment by Signature") {
+  title = "Reactivity Enrichment by Signature"
+) {
   meta <- object@meta.data
   required_cols <- c(
     "key",
@@ -567,9 +534,11 @@ plot_reactive_tcrs_vs_tested <- function(object,
   return(p)
 }
 
+# --- Clonotype-level ROC curves and AUCs of each signature for reactivity ---
 plot_ROC_curves <- function(object,
   pivot_cols = c("Yossef_NeoTCR_PBL_UCell", "iTAG_UCell"),
-  title) {
+  title
+) {
   meta <- object@meta.data
   required_cols <- c(
     "key",
@@ -588,6 +557,7 @@ plot_ROC_curves <- function(object,
       )
     )
   }
+  # --- Placeholder plot when the ROC cannot be computed ---
   empty_roc_plot <- function(message) {
     ggplot() +
       annotate(
@@ -689,6 +659,8 @@ plot_ROC_curves <- function(object,
       roc(
         score_df$is_reactive,
         score_df$score,
+        levels = c(0, 1),
+        direction = "<",
         quiet = TRUE
       ),
       error = function(e) NULL
@@ -774,6 +746,7 @@ plot_ROC_curves <- function(object,
   return(p)
 }
 
+# --- Violin, curve and ROC plots for one time point (uses globals signatures_to_compare, top_clonotypes) ---
 generate_plots <- function(object, time_filter, enrichment_filter, title_suffix) {
   res <- plot_reactive_top(
     object,
@@ -786,10 +759,10 @@ generate_plots <- function(object, time_filter, enrichment_filter, title_suffix)
   print(res$reactive_id_table)
   b <- plot_reactive_tcrs_vs_tested(
     object = object %>%
-    subset(
-      time == time_filter &
-      enrichment %in% enrichment_filter
-    ),
+      subset(
+        time == time_filter &
+        enrichment %in% enrichment_filter
+      ),
     title = paste0(
       time_filter,
       "_",
@@ -801,10 +774,10 @@ generate_plots <- function(object, time_filter, enrichment_filter, title_suffix)
   )
   c <- plot_ROC_curves(
     object = object %>%
-    subset(
-      time == time_filter &
-      enrichment %in% enrichment_filter
-    ),
+      subset(
+        time == time_filter &
+        enrichment %in% enrichment_filter
+      ),
     pivot_cols = as.character(signatures_to_compare),
     title = paste0(
       time_filter,
@@ -819,6 +792,7 @@ generate_plots <- function(object, time_filter, enrichment_filter, title_suffix)
   )
 }
 
+# --- Violin, curve and ROC plots over several time points (uses globals signatures_to_compare, top_clonotypes) ---
 generate_plots_all <- function(
   object,
   time_filter = NULL,
@@ -835,7 +809,7 @@ generate_plots_all <- function(
       time %in% time_values &
       enrichment %in% enrichment_filter
     )
-  # Violin plots
+  # --- Violin plots ---
   res <- plot_reactive_top(
     object,
     pivot_cols = as.character(signatures_to_compare),
@@ -854,7 +828,7 @@ generate_plots_all <- function(
       )
     )
   print(res$reactive_id_table)
-  # Curves
+  # --- Reactive TCRs vs tested curves ---
   b <- plot_reactive_tcrs_vs_tested(
     object = object_filtered,
     title = paste0(
@@ -866,7 +840,7 @@ generate_plots_all <- function(
     pivot_cols = as.character(signatures_to_compare),
     max_n = length(unique(object_filtered$key))
   )
-  # AUC
+  # --- ROC/AUC ---
   c <- plot_ROC_curves(
     object = object_filtered,
     pivot_cols = as.character(signatures_to_compare),
@@ -883,6 +857,7 @@ generate_plots_all <- function(
   )
 }
 
+# --- Radar plot of mean ± SEM expression, Reactive vs Other, optionally keeping up-regulated genes ---
 radar_compare_reactive <- function(
   object,
   gene_list,
@@ -910,7 +885,7 @@ radar_compare_reactive <- function(
       Value_scaled = switch(
         scale,
         linear = Value,
-        log2   = log2(Value + 1),
+        log2 = log2(Value + 1),
         zscore = (Value - mean(Value, na.rm = TRUE)) / sd(Value, na.rm = TRUE)
       )
     ) %>%
@@ -919,7 +894,7 @@ radar_compare_reactive <- function(
     group_by(Group, Gene) %>%
     summarise(
       Mean = mean(Value_scaled, na.rm = TRUE),
-      SEM  = sd(Value_scaled, na.rm = TRUE) / sqrt(n()),
+      SEM = sd(Value_scaled, na.rm = TRUE) / sqrt(n()),
       .groups = "drop"
     ) %>%
     filter(Gene %in% genes)
@@ -930,14 +905,14 @@ radar_compare_reactive <- function(
       mutate(
         mean_R = Mean[Group == "Reactive"],
         mean_O = Mean[Group == "Other"],
-        sem_R  = SEM[Group == "Reactive"],
-        sem_O  = SEM[Group == "Other"]
+        sem_R = SEM[Group == "Reactive"],
+        sem_O = SEM[Group == "Other"]
       ) %>%
       filter(
         if (filter_direction == "Reactive") {
-      mean_R > mean_O & (mean_R - mean_O) > 1.5 * sem_R
+          mean_R > mean_O & (mean_R - mean_O) > 1.5 * sem_R
         } else {
-      mean_O > mean_R & (mean_O - mean_R) > 1.5 * sem_R
+          mean_O > mean_R & (mean_O - mean_R) > 1.5 * sem_R
         }
       ) %>%
       ungroup() %>%
@@ -963,7 +938,7 @@ radar_compare_reactive <- function(
   }
   genes <- unique(data_wide$Gene)
   n <- length(genes)
-  angles <- (pi/2) - 2*pi * ((0:(n-1)) / n)
+  angles <- (pi/2) - 2*pi * ((0:(n - 1)) / n)
   angle_map <- tibble(
     Gene = genes,
     angle = angles
@@ -990,13 +965,16 @@ radar_compare_reactive <- function(
     bind_rows(dplyr::slice(., 1)) %>%
     ungroup()
   max_r <- max(data_summary$Mean + data_summary$SEM, na.rm = TRUE)*1.25
+  # --- Grid rings at pretty breaks (a fixed 0.5 step fails when max_r < 0.5, e.g. low-expressed genes) ---
+  rings <- pretty(c(0, max_r))
+  rings <- rings[rings > 0 & rings <= max_r]
   col_map <- c(
     "Reactive" = reactive_color,
-    "Other"    = other_color
+    "Other" = other_color
   )
   p <- ggplot() +
     geom_circle(
-      data = tibble(r = seq(0.5, max_r, by = 0.5)),
+      data = tibble(r = rings),
       aes(x0 = 0, y0 = 0, r = r),
       color = "gray80"
     ) +
@@ -1058,146 +1036,150 @@ radar_compare_reactive <- function(
   ))
 }
 
+# --- DE between two groups: volcano plus radar/bar plots of the filtered markers of each group ---
 find_markers <- function(object,
-  groups=NULL,
-  time_point=NULL,
-  assay="RNA",
-  logfc.threshold=0.1,
-  min.pct=0.25,
-  sem_multiplier=2,
+  groups = NULL,
+  time_point = NULL,
+  assay = "RNA",
+  logfc.threshold = 0.1,
+  min.pct = 0.25,
+  sem_multiplier = 2,
   slice = 10,
-  pval_cutoff=1e-3,
-  logfc_cutoff=1,
-  radar_scale="log2",
-  xlim_range=c(-7.5,7.5)
+  pval_cutoff = 1e-3,
+  logfc_cutoff = 1,
+  radar_scale = "log2",
+  xlim_range = c(-7.5, 7.5)
 ) {
-  # the object is expected to be log-normalized already (LogNormalize is per cell, so subsetting does not change it)
+  # --- Object must already be log-normalized (per cell, so subsetting does not change it) ---
   subset_obj <- subset(object, subset = category %in% groups & time %in% time_point)
   DefaultAssay(subset_obj) <- assay
   Idents(subset_obj) <- "category"
   features_use <- rownames(subset_obj[[assay]])
   features_use <- setdiff(features_use, excluded_signature_genes(features_use))
-  markers <- FindMarkers(subset_obj, ident.1=groups[1], ident.2=groups[2], features=features_use,
-    logfc.threshold=logfc.threshold, min.pct=min.pct) %>% rownames_to_column("gene")
-  markers$significant <- markers$p_val<pval_cutoff & abs(markers$avg_log2FC)>logfc_cutoff
-  volcano <- ggplot(markers, aes(avg_log2FC, -log10(p_val), fill=significant)) +
-    geom_point(size=3, shape=21, colour="black", alpha=0.7) +
-    scale_fill_manual(values=c("gray60","red3")) +
-    geom_text_repel(aes(label=ifelse(significant, gene, "")), max.overlaps=10) +
-    geom_vline(xintercept=c(-logfc_cutoff,logfc_cutoff), linetype="longdash") +
-    geom_hline(yintercept=-log10(pval_cutoff), linetype="longdash") +
-    theme_minimal(base_size=14) +
-    labs(title=paste(groups[1],"vs",groups[2]), x="log2(fc)", y="-log10(p-value)") +
-    xlim(xlim_range) + theme(aspect.ratio=0.5)
-  markers_to_test_gr1 <- markers %>% filter(significant & avg_log2FC>0) %>% pull(gene)
-  markers_to_test_gr2 <- markers %>% filter(significant & avg_log2FC<0) %>% pull(gene)
+  markers <- FindMarkers(subset_obj, ident.1 = groups[1], ident.2 = groups[2], features = features_use,
+    logfc.threshold = logfc.threshold, min.pct = min.pct) %>% rownames_to_column("gene")
+  markers$significant <- markers$p_val < pval_cutoff & abs(markers$avg_log2FC) > logfc_cutoff
+  volcano <- ggplot(markers, aes(avg_log2FC, -log10(p_val), fill = significant)) +
+    geom_point(size = 3, shape = 21, colour = "black", alpha = 0.7) +
+    scale_fill_manual(values = c("gray60", "red3")) +
+    geom_text_repel(aes(label = ifelse(significant, gene, "")), max.overlaps = 10) +
+    geom_vline(xintercept = c(-logfc_cutoff, logfc_cutoff), linetype = "longdash") +
+    geom_hline(yintercept = -log10(pval_cutoff), linetype = "longdash") +
+    theme_minimal(base_size = 14) +
+    labs(title = paste(groups[1], "vs", groups[2]), x = "log2(fc)", y = "-log10(p-value)") +
+    xlim(xlim_range) + theme(aspect.ratio = 0.5)
+  markers_to_test_gr1 <- markers %>% filter(significant & avg_log2FC > 0) %>% pull(gene)
+  markers_to_test_gr2 <- markers %>% filter(significant & avg_log2FC < 0) %>% pull(gene)
   markers_to_test <- unique(c(markers_to_test_gr1, markers_to_test_gr2))
-  object_sub <- subset(object, time==time_point)
+  object_sub <- subset(object, time == time_point)
   DefaultAssay(object_sub) <- assay
-  data <- FetchData(object_sub, vars=c("category", markers_to_test)) %>%
-    mutate(category_group=ifelse(category %in% groups[1], groups[1], "Other"))
+  data <- FetchData(object_sub, vars = c("category", markers_to_test)) %>%
+    mutate(category_group = ifelse(category %in% groups[1], groups[1], "Other"))
+  # --- Standard error of the mean ---
   sem <- function(x) sd(x)/sqrt(length(x))
   stats <- data %>%
     group_by(category_group) %>%
-    summarise(across(all_of(markers_to_test), list(mean=~mean(.), sem=~sem(.)), .names="{col}_{fn}"), .groups="drop")
-  stats_gr1 <- stats %>% filter(category_group==groups[1])
-  stats_gr2 <- stats %>% filter(category_group=="Other")
-  if(length(markers_to_test_gr1) > 0) {
+    summarise(across(all_of(markers_to_test), list(mean = ~mean(.), sem = ~sem(.)), .names = "{col}_{fn}"), .groups = "drop")
+  stats_gr1 <- stats %>% filter(category_group == groups[1])
+  stats_gr2 <- stats %>% filter(category_group == "Other")
+  if (length(markers_to_test_gr1) > 0) {
     stats_markers_gr1 <- tibble(
-      gene=markers_to_test_gr1,
-      mean_gr1=sapply(markers_to_test_gr1, function(g) stats_gr1[[paste0(g,"_mean")]]),
-      sem_gr1=sapply(markers_to_test_gr1, function(g) stats_gr1[[paste0(g,"_sem")]]),
-      mean_gr2=sapply(markers_to_test_gr1, function(g) stats_gr2[[paste0(g,"_mean")]]),
-      sem_gr2=sapply(markers_to_test_gr1, function(g) stats_gr2[[paste0(g,"_sem")]])
+      gene = markers_to_test_gr1,
+      mean_gr1 = sapply(markers_to_test_gr1, function(g) stats_gr1[[paste0(g, "_mean")]]),
+      sem_gr1 = sapply(markers_to_test_gr1, function(g) stats_gr1[[paste0(g, "_sem")]]),
+      mean_gr2 = sapply(markers_to_test_gr1, function(g) stats_gr2[[paste0(g, "_mean")]]),
+      sem_gr2 = sapply(markers_to_test_gr1, function(g) stats_gr2[[paste0(g, "_sem")]])
     )
   } else {
     stats_markers_gr1 <- tibble(
       gene = character(0),
       mean_gr1 = numeric(0),
-      sem_gr1  = numeric(0),
+      sem_gr1 = numeric(0),
       mean_gr2 = numeric(0),
-      sem_gr2  = numeric(0)
+      sem_gr2 = numeric(0)
     )
   }
-  if(length(markers_to_test_gr2) > 0) {
+  if (length(markers_to_test_gr2) > 0) {
     stats_markers_gr2 <- tibble(
       gene = markers_to_test_gr2,
       mean_gr1 = as.numeric(sapply(markers_to_test_gr2, function(g) stats_gr1[[paste0(g, "_mean")]])),
-      sem_gr1  = as.numeric(sapply(markers_to_test_gr2, function(g) stats_gr1[[paste0(g, "_sem")]])),
+      sem_gr1 = as.numeric(sapply(markers_to_test_gr2, function(g) stats_gr1[[paste0(g, "_sem")]])),
       mean_gr2 = as.numeric(sapply(markers_to_test_gr2, function(g) stats_gr2[[paste0(g, "_mean")]])),
-      sem_gr2  = as.numeric(sapply(markers_to_test_gr2, function(g) stats_gr2[[paste0(g, "_sem")]]))
+      sem_gr2 = as.numeric(sapply(markers_to_test_gr2, function(g) stats_gr2[[paste0(g, "_sem")]]))
     )
   } else {
     stats_markers_gr2 <- tibble(
       gene = character(0),
       mean_gr1 = numeric(0),
-      sem_gr1  = numeric(0),
+      sem_gr1 = numeric(0),
       mean_gr2 = numeric(0),
-      sem_gr2  = numeric(0)
+      sem_gr2 = numeric(0)
     )
   }
   genes_gr1_filtered <- stats_markers_gr1 %>%
     mutate(
       pass_filter =
-      (mean_gr1 > mean_gr2) &
-      ((mean_gr1 - sem_multiplier * sem_gr1) > (mean_gr2 + sem_multiplier * sem_gr2))
+        (mean_gr1 > mean_gr2) &
+        ((mean_gr1 - sem_multiplier * sem_gr1) > (mean_gr2 + sem_multiplier * sem_gr2))
     ) %>%
     filter(pass_filter)
   genes_gr2_filtered <- stats_markers_gr2 %>%
     mutate(
       pass_filter =
-      (mean_gr2 > mean_gr1) &
-      ((mean_gr2 - sem_multiplier * sem_gr2) > (mean_gr1 + sem_multiplier * sem_gr1))
+        (mean_gr2 > mean_gr1) &
+        ((mean_gr2 - sem_multiplier * sem_gr2) > (mean_gr1 + sem_multiplier * sem_gr1))
     ) %>%
     filter(pass_filter) %>%
     arrange(desc(mean_gr2)) %>%
     slice_head(n = slice)
+  # --- Radar plot (>= 3 genes) or bar plot of the selected genes of one group ---
   plot_group_genes <- function(stats_table, group_name) {
     genes <- stats_table$gene
-    if(length(genes)==0) return(list(plot=NULL, genes=character(0)))
-    if(length(genes)>=3) {
+    if (length(genes) == 0) return(list(plot = NULL, genes = character(0)))
+    if (length(genes) >= 3) {
       radar <- tryCatch(
-        radar_compare_reactive(object_sub, gene_list=genes, filter_up=FALSE, scale=radar_scale),
-        error=function(e) {
-          warning("Radar plot failed for ", group_name, ": ", conditionMessage(e), call.=FALSE)
+        radar_compare_reactive(object_sub, gene_list = genes, filter_up = FALSE, scale = radar_scale),
+        error = function(e) {
+          warning("Radar plot failed for ", time_point, " / ", group_name, ": ", conditionMessage(e), call. = FALSE)
           NULL
         }
       )
-      # keep the genes even if the plot fails, so the signature is not silently emptied
-      if(is.null(radar)) return(list(plot=NULL, genes=genes))
-      return(list(plot=if(is.list(radar) && "plot" %in% names(radar)) radar$plot else radar, genes=genes))
+      # --- Keep the genes even if the plot fails, so the signature is not silently emptied ---
+      if (is.null(radar)) return(list(plot = NULL, genes = genes))
+      return(list(plot = if (is.list(radar) && "plot" %in% names(radar)) radar$plot else radar, genes = genes))
     } else {
       plot_data <- stats_table %>% filter(pass_filter) %>% select(gene, mean_gr1, sem_gr1, mean_gr2, sem_gr2) %>%
-        pivot_longer(cols=-gene, names_to=c("stat","category"), names_sep="_", values_to="value") %>%
-        pivot_wider(names_from=stat, values_from=value) %>%
-        mutate(category=recode(category,"gr1"="Reactive","gr2"="Other"))
-      fill_colors <- c("Reactive"="red3","Other"="gray60")
-      plot <- ggplot(plot_data, aes(x=gene, y=mean, fill=category)) +
-        geom_bar(stat="identity", position=position_dodge(0.8), width=0.8, color="black", linewidth=0.5, alpha=0.75) +
-        geom_errorbar(aes(ymin=mean-sem, ymax=mean+sem), position=position_dodge(0.8), width=0.2) +
-        scale_fill_manual(values=fill_colors) + theme_minimal(base_size=14) + theme(aspect.ratio=1) +
-        labs(x="Gene(s)", y="Expression")
-      return(list(plot=plot, genes=genes))
+        pivot_longer(cols = -gene, names_to = c("stat", "category"), names_sep = "_", values_to = "value") %>%
+        pivot_wider(names_from = stat, values_from = value) %>%
+        mutate(category = recode(category, "gr1" = "Reactive", "gr2" = "Other"))
+      fill_colors <- c("Reactive" = "red3", "Other" = "gray60")
+      plot <- ggplot(plot_data, aes(x = gene, y = mean, fill = category)) +
+        geom_bar(stat = "identity", position = position_dodge(0.8), width = 0.8, color = "black", linewidth = 0.5, alpha = 0.75) +
+        geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), position = position_dodge(0.8), width = 0.2) +
+        scale_fill_manual(values = fill_colors) + theme_minimal(base_size = 14) + theme(aspect.ratio = 1) +
+        labs(x = "Gene(s)", y = "Expression")
+      return(list(plot = plot, genes = genes))
     }
   }
   gr1_result <- plot_group_genes(stats_table = genes_gr1_filtered, group_name = groups[1])
   gr2_result <- plot_group_genes(stats_table = genes_gr2_filtered, group_name = "Other")
-  gr1_plot <- if(!is.null(gr1_result$plot)) gr1_result$plot + labs(title="Mean ± SEM for group 1") else NULL
-  gr2_plot <- if(!is.null(gr2_result$plot)) gr2_result$plot + labs(title="Mean ± SEM for group 2") else NULL
+  gr1_plot <- if (!is.null(gr1_result$plot)) gr1_result$plot + labs(title = "Mean ± SEM for group 1") else NULL
+  gr2_plot <- if (!is.null(gr2_result$plot)) gr2_result$plot + labs(title = "Mean ± SEM for group 2") else NULL
   list(
-    plot = wrap_plots(list(volcano, gr1_plot, gr2_plot)[!sapply(list(volcano, gr1_plot, gr2_plot), is.null)], ncol=3),
+    plot = wrap_plots(list(volcano, gr1_plot, gr2_plot)[!sapply(list(volcano, gr1_plot, gr2_plot), is.null)], ncol = 3),
     markers_group1 = gr1_result$genes,
     markers_group2 = gr2_result$genes
   )
 }
 
-# TCR V(D)J and ribosomal genes are kept in the matrix (library size, normalization) but excluded from DE and signatures
+# --- TCR V(D)J/C and ribosomal genes: kept in the matrix but excluded from DE and signatures ---
 excluded_signature_genes <- function(genes) {
   tcr_genes <- setdiff(genes, quietTCRgenes(genes))
   ribo_genes <- intersect(genes, scGate::genes.blacklist.default$Hs$Ribo)
   union(tcr_genes, ribo_genes)
 }
 
+# --- Drop excluded genes from a signature and put the "-" (down) genes last ---
 refine_gene_set <- function(genes) {
   base_genes <- sub("-$", "", genes)
   genes %>%
@@ -1205,6 +1187,7 @@ refine_gene_set <- function(genes) {
     .[order(grepl("-$", .), .)]
 }
 
+# --- PCA, neighbors, clustering and UMAP with fixed seeds ---
 run_dimred_cluster <- function(x, ndim, res, seed = SEED, n_neighbors = 60, min_dist = 0.5, k_param = 30, reduction_name = "umap") {
   set.seed(seed)
   x <- RunPCA(
@@ -1242,21 +1225,23 @@ run_dimred_cluster <- function(x, ndim, res, seed = SEED, n_neighbors = 60, min_
   return(x)
 }
 
+# --- Remove TCR V(D)J/C genes from a gene vector ---
 quietTCRgenes <- function(sc) {
-  unwanted_genes <- "^TR[ABDG][VDJ][^D]"
+  unwanted_genes <- "^TR[ABDG]([VDJ][^D]|C)"
   unwanted_genes <- grep(pattern = unwanted_genes, x = sc, value = TRUE)
   sc <- sc[!sc %in% unwanted_genes]
   return(sc)
 }
 
-# --- Interactive plot preview (R on a compute node cannot reach the VS Code plot viewer) ---
-# vplot() writes a ggplot/patchwork to a PNG; keep that PNG open in VS Code and it refreshes on each write.
+# --- Write a plot to a PNG to preview it in VS Code (R on a compute node cannot reach its plot viewer) ---
 vplot <- function(p = ggplot2::last_plot(), w = 9, h = 7, dpi = 110,
-                  file = file.path(results_dir, "current_plot.png")) {
+  file = file.path(results_dir, "current_plot.png")
+) {
   ggsave(file, p, width = w, height = h, dpi = dpi, bg = "white")
   invisible(p)
 }
-# auto_vplot() calls vplot() after every console command that prints a new ggplot/patchwork.
+
+# --- Call vplot() after every console command that prints a new ggplot/patchwork ---
 auto_vplot <- function(enable = TRUE, ...) {
   if ("auto_vplot" %in% getTaskCallbackNames()) removeTaskCallback("auto_vplot")
   if (!enable) return(invisible(FALSE))

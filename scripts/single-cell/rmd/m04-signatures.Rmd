@@ -1,5 +1,5 @@
 ---
-title: "m04_plots_analyses_latest"
+title: "m04-signatures"
 author: "Endika Prieto"
 date: "2026-02-04"
 output: html_document
@@ -16,10 +16,11 @@ source(file.path(setup_dir, "setup.R"), local = TRUE)
 
 ```{r, warning=FALSE}
 sample <- "vhio136"
-int_dir <- file.path(datapath, sample, "integrated")
+int_dir <- file.path(datapath, "integrated")
+sig_root <- file.path(datapath, "DEG-signatures", "vhio136")
 compartment <- "cd8_int_nn"
 obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds")))
-# RNA is joined and log-normalized in m02; only redo it if the object does not have it
+# --- RNA is joined and log-normalized in m02; only redo it if the object does not have it ---
 if (length(Layers(obj[["RNA"]], search = "counts")) > 1) obj <- JoinLayers(obj, assay = "RNA")
 if (!"data" %in% Layers(obj[["RNA"]])) obj <- NormalizeData(obj, assay = "RNA", layer = "counts")
 required_metadata <- c("reactivity", "manual.annotation", "time")
@@ -27,10 +28,12 @@ missing_metadata <- setdiff(required_metadata, colnames(obj@meta.data))
 if (length(missing_metadata) > 0) {
   stop("Missing required metadata columns: ", paste(missing_metadata, collapse = ", "))
 }
+# --- TRUE where a value is not missing (NA, "", "NA" or "<NA>") ---
 has_metadata_value <- function(x) {
   x <- as.character(x)
   !is.na(x) & !x %in% c("", "NA", "<NA>")
 }
+# --- TRUE where any ';'-separated token of x is in tokens ---
 has_metadata_token <- function(x, tokens) {
   vapply(
     strsplit(ifelse(is.na(x), "", as.character(x)), ";", fixed = TRUE),
@@ -38,7 +41,7 @@ has_metadata_token <- function(x, tokens) {
     logical(1)
   )
 }
-# reactivity already carries the viral specificity (EBV/CMV) merged in m02
+# --- reactivity already carries the viral specificity (EBV/CMV) merged in m02 ---
 reactivity_chr <- as.character(obj$reactivity)
 has_reactive <- has_metadata_token(reactivity_chr, "Yes")
 has_autoreactive <- has_metadata_token(reactivity_chr, "Auto-reactive")
@@ -72,11 +75,11 @@ rm(
   has_matched_id
 )
 category_colors <- c(
-  "Reactive"                       = "red3",
-  "Autoreactive"                   = "#E69F00",
-  "Viral_databases"                = "#3c4b99",
-  "Non-reactive"                   = "gray20",
-  "Non-hits"                       = "gray60",
+  "Reactive" = "red3",
+  "Autoreactive" = "#E69F00",
+  "Viral_databases" = "#3c4b99",
+  "Non-reactive" = "gray20",
+  "Non-hits" = "gray60",
   manual_colors
 )
 plots_list <- list()
@@ -92,22 +95,25 @@ The phenotype comparisons are generated from a mutually exclusive category. Reac
 ```{r, fig.width=15}
 time_points <- c("pre", "post1", "post2", "post6")
 comparison_groups <- c(
-  "CD8_TCM"                 = "CD8 TCM",
-  "CD8_activated_TCM_like"  = "CD8 activated TCM-like",
-  "CD8_activated_TEM_GZMK"  = "CD8 activated TEM GZMK+",
-  "CD8_LEF1_ZNF683"         = "CD8 LEF1+ ZNF683+",
-  "CD8_TEMRA_FGFBP2"        = "CD8 TEMRA FGFBP2+",
-  "CD8_TEMRA_LILRB1"        = "CD8 TEMRA LILRB1+",
-  "CD8_proliferating"       = "CD8 proliferating",
-  "Viral_databases"         = "Viral_databases",
-  "Non_reactive"            = "Non-reactive",
-  "Non_hits"                = "Non-hits"
+  "CD8_TCM" = "CD8 TCM",
+  "CD8_LEF1_ZNF683" = "CD8 LEF1+ ZNF683+",
+  "CD8_activated_TEM_GZMK" = "CD8 activated TEM GZMK+",
+  "CD8_TEM_KLRG1" = "CD8 TEM KLRG1+",
+  "CD8_TEMRA_FGFBP2" = "CD8 TEMRA FGFBP2+",
+  "CD8_TEMRA_LILRB1" = "CD8 TEMRA LILRB1+",
+  "CD8_activated_proliferating" = "CD8 activated/proliferating",
+  "Viral_databases" = "Viral_databases",
+  "Non_reactive" = "Non-reactive",
+  "Non_hits" = "Non-hits"
 )
-run_iTAG_comparison <- function(obj,
-                                time_point,
-                                comparison_group,
-                                pval_cutoff = 1e-3,
-                                logfc_cutoff = 1) {
+# --- Reactive vs one group at one timepoint (find_markers); skips if < 2 cells, down markers get '-' ---
+run_iTAG_comparison <- function(
+  obj,
+  time_point,
+  comparison_group,
+  pval_cutoff = 1e-3,
+  logfc_cutoff = 1
+) {
   groups <- c("Reactive", comparison_group)
   group_counts <- table(
     obj$category[
@@ -185,6 +191,14 @@ gene_sets[["iTAG_all"]] <- unique(c(
   gene_sets$iTAG_post6
 )) %>%
   refine_gene_set()
+# --- Drop genes up in one timepoint and down in another (UCell would add and subtract them) ---
+conflicting_genes <- intersect(
+  grep("-$", gene_sets$iTAG_all, value = TRUE, invert = TRUE),
+  sub("-$", "", grep("-$", gene_sets$iTAG_all, value = TRUE))
+)
+message("Genes with opposite signs across timepoints, removed from iTAG_all: ", paste(conflicting_genes, collapse = ", "))
+gene_sets$iTAG_all <- gene_sets$iTAG_all[!sub("-$", "", gene_sets$iTAG_all) %in% conflicting_genes]
+rm(conflicting_genes)
 empty_signatures <- names(gene_sets)[lengths(gene_sets) == 0]
 if (length(empty_signatures) > 0) {
   stop(
@@ -204,14 +218,13 @@ obj <- AddModuleScore_UCell(
 Checkpoint.
 
 ```{r, warning=FALSE}
-# seurat object (TRTPBL_UCell and the other signatures.tsv scores are inherited from m02)
+# --- Seurat object (TRTPBL_UCell and the other signatures.tsv scores are inherited from m02) ---
 saveRDS(obj, file.path(int_dir, "seurat", paste0(compartment, ".rds")))
-# signatures
-sig_dir <- file.path(int_dir, "DEG-signatures", compartment, "markers")
+# --- Signatures (rds and one txt per gene set) ---
+sig_dir <- file.path(sig_root, compartment, "markers")
 dir.create(sig_dir, recursive = TRUE, showWarnings = FALSE)
 saveRDS(gene_sets, file.path(sig_dir, "itag_signatures.rds"))
-# gene_sets
-for(name in names(gene_sets)) {
+for (name in names(gene_sets)) {
   file_path <- file.path(sig_dir, paste0(name, ".txt"))
   write.table(
     gene_sets[[name]],
@@ -221,11 +234,13 @@ for(name in names(gene_sets)) {
     col.names = FALSE
   )
 }
-# plots
-dir.create(file.path(int_dir, "DEG-signatures", compartment, "plots", "markers"), recursive = TRUE, showWarnings = FALSE)
+# --- Marker plots ---
+dir.create(file.path(sig_root, compartment, "markers", "plots-radar"), recursive = TRUE, showWarnings = FALSE)
 for (i in names(iTAG_signature_plots)) {
-  pdf(file = file.path(int_dir, "DEG-signatures", compartment, "plots", "markers", paste0(i, ".pdf")),
-      width = 24, height = 9)
+  pdf(
+    file = file.path(sig_root, compartment, "markers", "plots-radar", paste0(i, ".pdf")),
+    width = 24, height = 9
+  )
   print(iTAG_signature_plots[[i]])
   dev.off()
 }
@@ -247,21 +262,21 @@ g39 <- plot_box_with_stats(
   group_by = "category",
   comparisons = my_comparisons,
   category_colors = category_colors
-  )
+)
 g40 <- plot_box_with_stats(
   seurat_object = obj %>% subset(!is.na(category) & category != "NA" & time == "post1"),
   feature = "iTAG_post1_UCell",
   group_by = "category",
   comparisons = my_comparisons,
   category_colors = category_colors
-  )
+)
 g41 <- plot_box_with_stats(
   seurat_object = obj %>% subset(!is.na(category) & category != "NA" & time == "post2"),
   feature = "iTAG_post2_UCell",
   group_by = "category",
   comparisons = my_comparisons,
   category_colors = category_colors
-  )
+)
 g42 <- plot_box_with_stats(
   seurat_object = obj %>% subset(!is.na(category) & category != "NA" & time == "pre"),
   feature = "iTAG_all_UCell",
@@ -296,7 +311,7 @@ g46 <- plot_box_with_stats(
   group_by = "category",
   comparisons = my_comparisons,
   category_colors = category_colors
-  )
+)
 g47 <- plot_box_with_stats(
   seurat_object = obj %>% subset(!is.na(category) & category != "NA" & time == "post6"),
   feature = "iTAG_all_UCell",
@@ -318,7 +333,7 @@ g49 <- plot_box_with_stats(
   comparisons = my_comparisons,
   category_colors = category_colors
 )
-# titles: signature · cells evaluated
+# --- Titles: signature · cells evaluated ---
 g39 <- g39 + labs(title = "iTAG_pre · pre cells", subtitle = "Time-specific signature")
 g40 <- g40 + labs(title = "iTAG_post1 · post1 cells", subtitle = "Time-specific signature")
 g41 <- g41 + labs(title = "iTAG_post2 · post2 cells", subtitle = "Time-specific signature")
@@ -330,27 +345,27 @@ g44 <- g44 + labs(title = "iTAG_all · post2 cells", subtitle = "Pan-timepoint s
 g47 <- g47 + labs(title = "iTAG_all · post6 cells", subtitle = "Pan-timepoint signature")
 g48 <- g48 + labs(title = "Yossef_NeoTCR_PBL · all timepoints", subtitle = "Published signature")
 g49 <- g49 + labs(title = "TRTPBL · all timepoints", subtitle = "Published signature")
-# save plot: row 1 time-specific + pan (all timepoints), row 2 pan by timepoint, row 3 published signatures
-p <- print(wrap_plots(g39, g40, g41, g46, g45,
-                      g42, g43, g44, g47, plot_spacer(),
-                      g48, g49, plot_spacer(), plot_spacer(), plot_spacer(),
-                      ncol = 5) &
-             theme(aspect.ratio = 0.75))
+# --- Rows: time-specific + pan (all timepoints), pan by timepoint, published signatures ---
+p <- print(wrap_plots(
+  g39, g40, g41, g46, g45,
+  g42, g43, g44, g47, plot_spacer(),
+  g48, g49, plot_spacer(), plot_spacer(), plot_spacer(),
+  ncol = 5
+) &
+  theme(aspect.ratio = 0.75))
 plots_list[["Signatures_iTAG"]] <- p
 ```
 
 ### Pre
 
-Performance 
+Performance
 
 ```{r}
 top_clonotypes <- 100
-signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_post6_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
 signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
-
 plots_cd3 <- generate_plots(obj, "pre", "bulk", "Pre-Tx")
 plots_cd3pd1 <- generate_plots(obj, "pre", c("bulk", "pd1"), "Pre-Tx")
-
 plots_list[["iTAG_signature_pre"]] <- wrap_plots(
   plots_cd3$a, plots_cd3$b, plots_cd3$c,
   plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
@@ -362,12 +377,10 @@ plots_list[["iTAG_signature_pre"]] <- wrap_plots(
 
 ```{r}
 top_clonotypes <- 100
-signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_post6_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
 signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
-
 plots_cd3 <- generate_plots(obj, "post1", "bulk", "Post1")
 plots_cd3pd1 <- generate_plots(obj, "post1", c("bulk", "pd1"), "Post1")
-
 plots_list[["iTAG_signature_post1"]] <- wrap_plots(
   plots_cd3$a, plots_cd3$b, plots_cd3$c,
   plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
@@ -379,12 +392,10 @@ plots_list[["iTAG_signature_post1"]] <- wrap_plots(
 
 ```{r}
 top_clonotypes <- 100
-signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_post6_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
 signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
-
 plots_cd3 <- generate_plots(obj, "post2", "bulk", "Post2")
 plots_cd3pd1 <- generate_plots(obj, "post2", c("bulk", "pd1"), "Post2")
-
 plots_list[["iTAG_signature_post2"]] <- wrap_plots(
   plots_cd3$a, plots_cd3$b, plots_cd3$c,
   plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
@@ -396,12 +407,10 @@ plots_list[["iTAG_signature_post2"]] <- wrap_plots(
 
 ```{r}
 top_clonotypes <- 100
-signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_post6_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
 signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
-
 plots_cd3 <- generate_plots(obj, "post6", "bulk", "Post6")
 plots_cd3pd1 <- generate_plots(obj, "post6", c("bulk", "pd1"), "Post6")
-
 plots_list[["iTAG_signature_post6"]] <- wrap_plots(
   plots_cd3$a, plots_cd3$b, plots_cd3$c,
   plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
@@ -413,9 +422,8 @@ plots_list[["iTAG_signature_post6"]] <- wrap_plots(
 
 ```{r}
 top_clonotypes <- 100
-signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_post6_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
 signatures_to_compare <- factor(signatures_to_compare, levels = signatures_to_compare)
-
 plots_cd3 <- generate_plots_all(
   object = obj,
   time_filter = NULL,
@@ -428,7 +436,6 @@ plots_cd3pd1 <- generate_plots_all(
   enrichment_filter = c("bulk", "pd1"),
   title_suffix = "All"
 )
-
 plots_list[["iTAG_signature_all"]] <- wrap_plots(
   plots_cd3$a, plots_cd3$b, plots_cd3$c,
   plots_cd3pd1$a, plots_cd3pd1$b, plots_cd3pd1$c,
@@ -438,13 +445,14 @@ plots_list[["iTAG_signature_all"]] <- wrap_plots(
 
 # Heatmap
 
-New staff, just top-20 DEGs between Reactive vs Other per timepoint, with no duplicates across timepoints.
+Top-20 DEGs between Reactive vs Other per timepoint, with no duplicates across timepoints.
+
 ```{r}
 top_n_per_timepoint <- 20
 time_order <- c("pre", "post1", "post2", "post6")
 assay_use <- DefaultAssay(obj)
 test_use <- "wilcox"
-signatures <- readRDS(file.path(int_dir, "DEG-signatures", compartment, "markers", "itag_signatures.rds"))
+signatures <- readRDS(file.path(sig_root, compartment, "markers", "itag_signatures.rds"))
 signature_genes <- signatures$iTAG_all %>%
   unique() %>%
   .[!grepl("-$", .)]
@@ -717,7 +725,7 @@ plots_list[["iTAG_signature_heatmap_top_DEGs"]] <- p
 # Save plots.
 
 ```{r}
-plots_dir <- file.path(int_dir, "DEG-signatures", compartment, "plots", "yield")
+plots_dir <- file.path(sig_root, compartment, "performance")
 dir.create(
   plots_dir,
   recursive = TRUE,

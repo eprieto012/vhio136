@@ -38,7 +38,7 @@ def exec_command(cmd):
             logger.error(line.rstrip())
         for line in error.decode("utf-8").split("\n") if error else "":
             logger.error(line.rstrip())
-        sys.exit()
+        sys.exit(1)
 
 
 # --------------------------------------------------

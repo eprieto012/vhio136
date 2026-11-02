@@ -1,5 +1,5 @@
 ---
-title: "m03_plots"
+title: "m03-plots-analyses"
 author: "Endika Prieto"
 date: "2026-07-10"
 output: html_document
@@ -13,9 +13,8 @@ Functions and parameters
 setup_dir <- normalizePath("../setup", mustWork = TRUE)
 source(file.path(setup_dir, "setup.R"), local = TRUE)
 sample <- "vhio136"
-int_dir <- file.path(datapath, sample, "integrated")
-
-plot_dir <- file.path(results_dir, "manuscript")
+int_dir <- file.path(datapath, "integrated")
+plot_dir <- file.path(int_dir, "plots-manuscript")
 if (!dir.exists(plot_dir)) {
   dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
 }
@@ -93,9 +92,7 @@ sample <- "vhio136"
 compartment <- "cd8_int_nn"
 obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds")))
 obj@meta.data$time <- factor(obj@meta.data$time, levels = c("pre", "post1", "post2", "post6"))
-plots_list <- list()
-
-# Keep the latest STACAS reduction
+# --- Keep the latest STACAS reduction ---
 stacas_cols <- grep("^STACAS_snn_res\\.", colnames(obj@meta.data), value = TRUE)
 if (!length(stacas_cols)) stop("No STACAS_snn_res.* columns found.")
 stacas_col <- tail(stacas_cols, 1)
@@ -119,11 +116,11 @@ obj.sub <- obj
 obj.sub$reactive_id <- ifelse(obj.sub$reactivity == "Yes", obj.sub$matched_ID, NA)
 chosen_ids <- sort(unique(na.omit(obj.sub$reactive_id)))
 ucell_cols <- c(
-  "Oliverira_tumor_spec_TTE_UCell",
-  "Oliverira_tumor_spec_TAct_UCell",
-  "Oliverira_tumor_spec_TPE_UCell",
-  "Oliverira_tumor_spec_TProl_UCell",
-  "Oliverira_tumor_spec_TEM_UCell",
+  "Oliveira_tumor_spec_TTE_UCell",
+  "Oliveira_tumor_spec_TAct_UCell",
+  "Oliveira_tumor_spec_TPE_UCell",
+  "Oliveira_tumor_spec_TProl_UCell",
+  "Oliveira_tumor_spec_TEM_UCell",
   "Lowery_prior_ICB_UCell",
   "Lowery_post_ICB_UCell",
   "Yossef_NeoTCR_PBL_UCell",
@@ -137,18 +134,12 @@ df_tr <- obj.sub@meta.data %>%
   group_by(reactive_id, time, signature) %>%
   summarize(mean_score = mean(score, na.rm = TRUE), .groups = "drop") %>%
   filter(!is.na(reactive_id)) %>%
-  mutate(time = factor(time, levels = time_levels),
-         group = "TR")
-ids_keep <- df_tr %>%
-  distinct(reactive_id, time) %>%
-  group_by(reactive_id) %>%
-  tally(name = "n_times") %>%
-  filter(n_times >= 1) %>%
-  pull(reactive_id)
-df_tr <- df_tr %>% filter(reactive_id %in% ids_keep)
-
+  mutate(
+    time = factor(time, levels = time_levels),
+    group = "TR"
+  )
 # --- Plot ---
-p <- lapply(ucell_cols, function(sig){
+p <- lapply(ucell_cols, function(sig) {
   mat <- df_tr %>%
     filter(signature == sig) %>%
     select(time, reactive_id, mean_score) %>%
@@ -176,14 +167,15 @@ ggsave(filename = file.path(plot_dir, paste0("signatures_", compartment, ".pdf")
 
 # Pheno x traj
 
-First, calculate key frequencies over time-points.
+First, calculate key frequencies over time-points. Frequencies are the fraction of CD8+ non-naïve cells with TRB per timepoint, pooling bulk and PD-1^hi-enriched libraries, so PD-1+ clones are over-represented; they are not blood frequencies (see the bulk TCRβ repertoire in Fig. 3f).
 
 ```{r}
 # --- Calculate longitudinal frequencies ---
 clono_freq <- obj@meta.data %>%
   filter(
     time %in% c("pre", "post1", "post2", "post6"),
-    stringr::str_detect(chains, "TRB"), # Only TRB-containing clonotypes were considered to allow matching with the deep-sequencing data.
+    # --- Only TRB-containing clonotypes, to allow matching with the deep-sequencing data ---
+    stringr::str_detect(chains, "TRB"),
     !is.na(key)
   ) %>%
   select(key, TCRb, time) %>%
@@ -231,14 +223,12 @@ clono_freq <- obj@meta.data %>%
     total_cells_time,
     frequency
   )
-
 ```
 
 ```{r}
 # --- Annotate, plot and save each time point ---
 for (i in levels(clono_freq$time)) {
   time <- i
-
   # --- Annotate clonotypes ---
   annotation <- obj@meta.data %>%
     filter(
@@ -266,7 +256,6 @@ for (i in levels(clono_freq$time)) {
       annotation_status
     ) %>%
     arrange(key, TCRb)
-
   # --- Save annotation table ---
   write.table(
     annotation,
@@ -278,7 +267,6 @@ for (i in levels(clono_freq$time)) {
     quote = FALSE,
     row.names = FALSE
   )
-
   # --- Add phenotype to longitudinal frequencies ---
   clono_pheno <- clono_freq %>%
     inner_join(
@@ -287,12 +275,10 @@ for (i in levels(clono_freq$time)) {
       by = c("key", "TCRb")
     ) %>%
     arrange(key, TCRb, time_numeric)
-
   assign(
     paste0("clono_pheno_", time),
     clono_pheno
   )
-
   # --- Plot longitudinal trajectories ---
   p_clono_pheno <- ggplot(
     clono_pheno,
@@ -332,7 +318,7 @@ for (i in levels(clono_freq$time)) {
     ) +
     labs(
       x = "Time",
-      y = "Clonotype frequency"
+      y = "Clonotype frequency (fraction of CD8+ non-naïve cells, bulk + PD-1^hi libraries)"
     ) +
     theme_classic() +
     theme(
@@ -387,9 +373,7 @@ for (i in levels(clono_freq$time)) {
         5
       )
     )
-
   print(p_clono_pheno)
-
   # --- Save plot ---
   ggsave(
     filename = file.path(
@@ -410,6 +394,7 @@ rm(i, time)
 ## Plots
 
 ### Fig. 3a
+
 UMAP manual.annotation
 
 ```{r}
@@ -452,15 +437,17 @@ Piechart manual.annotation
 ```{r}
 cluster_col <- "time"
 category_col <- "manual.annotation"
-p <- plot_cluster_percentages(obj,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = manual_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = manual_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("Figure3a_", compartment, "_piechart_manual.annotation.pdf")), width = 7.5, height = 7.5, plot = p)
 ```
 
@@ -469,19 +456,22 @@ Piechart cloneSize
 ```{r}
 cluster_col <- "time"
 category_col <- "cloneSize"
-p <- plot_cluster_percentages(obj,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = clone_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = clone_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("Figure3a_", compartment, "_piechart_cloneSize.pdf")), width = 7.5, height = 7.5, plot = p)
 ```
 
 ### Fig. 3b
+
 Reactivity
 
 ```{r}
@@ -491,6 +481,7 @@ print(p)
 ```
 
 ### Fig. 3c
+
 Alluvial plots of reactive PBLs (cellCount)
 
 ```{r}
@@ -508,7 +499,8 @@ reactivity_present <- reactivity_present[!is.na(reactivity_present) & !reactivit
 reactivity_levels <- c(intersect(reactivity_levels, reactivity_present), setdiff(sort(reactivity_present), reactivity_levels))
 state_global <- as.character(obj@meta.data[[alluvial_col]])
 state_global <- ifelse(is.na(state_global) | state_global %in% c("", "NA", "<NA>"), alluvial_na_label, state_global)
-state_levels <- sort(unique(state_global))
+state_levels <- unique(state_global)
+state_levels <- c(intersect(names(alluvial_palette), state_levels), sort(setdiff(state_levels, names(alluvial_palette))))
 state_levels <- state_levels[!is.na(state_levels)]
 if (is.null(names(alluvial_palette))) {
   state_cols <- setNames(alluvial_palette[seq_along(state_levels)], state_levels)
@@ -576,7 +568,7 @@ p <- ggplot2::ggplot(
   ggplot2::guides(
     fill = ggplot2::guide_legend(
       title = alluvial_col,
-      nrow = 1,
+      nrow = 2,
       byrow = TRUE
     )
   ) +
@@ -603,20 +595,23 @@ Piechart phenotype of TR
 obj.sub <- subset(obj, subset = reactivity == "Yes")
 cluster_col <- "time"
 category_col <- "manual.annotation"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = manual_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = manual_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("Figure3c_", compartment, "_piechart_pheno_TR.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
 
 ### Fig. 3d
+
 Location in the UMAP of the TCR library-tested PBL-TILs and their reactivity.
 
 ```{r}
@@ -646,6 +641,7 @@ id_candidates <- intersect(c("id", "matched_ID"), colnames(obj@meta.data))
 if (length(id_candidates) == 0) {
   stop("Neither 'id' nor 'matched_ID' found in obj@meta.data.")
 }
+# --- Count IDs of a ';'-separated column found in true_ids (uses true_ids from this chunk) ---
 count_true_id_overlap <- function(x) {
   ids <- trimws(unlist(strsplit(as.character(x), ";")))
   sum(ids %in% true_ids, na.rm = TRUE)
@@ -696,7 +692,6 @@ plot_context$panel_title <- factor(plot_context$panel_title, levels = emergence_
 plot_highlight$time <- factor(plot_highlight$time, levels = time_levels)
 plot_highlight$panel_title <- factor(plot_highlight$panel_title, levels = emergence_levels)
 plot_highlight$shape_clone <- factor(plot_highlight$shape_clone, levels = legend_breaks)
-
 # --- Plot ---
 p <- ggplot2::ggplot() +
   ggplot2::geom_point(
@@ -763,6 +758,7 @@ print(p)
 ```
 
 ### Fig. 3e
+
 Alluvial plots of selected reactive PBLs.
 
 ```{r}
@@ -801,7 +797,8 @@ df <- obj@meta.data %>%
     state = ifelse(is.na(state) | state %in% c("", "NA", "<NA>"), alluvial_na_label, state)
   ) %>%
   dplyr::select(id, time, state)
-state_levels <- sort(unique(as.character(df$state)))
+state_levels <- unique(as.character(df$state))
+state_levels <- c(intersect(names(alluvial_palette), state_levels), sort(setdiff(state_levels, names(alluvial_palette))))
 state_levels <- state_levels[!is.na(state_levels)]
 if (is.null(names(alluvial_palette))) {
   state_cols <- setNames(alluvial_palette[seq_along(state_levels)], state_levels)
@@ -840,7 +837,6 @@ max_y <- df_summary %>%
   dplyr::summarise(total = sum(n), .groups = "drop") %>%
   dplyr::pull(total) %>%
   max(na.rm = TRUE)
-
 # --- Plot ---
 p <- ggplot2::ggplot(
   df_summary,
@@ -870,7 +866,7 @@ p <- ggplot2::ggplot(
   ggplot2::guides(
     fill = ggplot2::guide_legend(
       title = alluvial_col,
-      nrow = 1,
+      nrow = 2,
       byrow = TRUE
     )
   ) +
@@ -892,10 +888,11 @@ print(p)
 ```
 
 ### Fig. 3f
+
 Longitudinal CDR-3β repertoires of tumor-reactive PBLs
 
 ```{r}
-path <- file.path(aux_dir, "bulk-repertoire", "pbl_trb_timecourse_vhio136.tsv")
+path <- file.path(datapath_load, "bulk-tcrb", "pbl_trb_timecourse_vhio136.tsv")
 data_raw <- read.table(path, sep = "\t", header = TRUE) %>%
   dplyr::mutate(
     TRBV = stringr::str_extract(nucleotide, "TCRBV[0-9]+-0?[0-9]"),
@@ -912,8 +909,6 @@ data_raw <- read.table(path, sep = "\t", header = TRUE) %>%
     cdr3 = sub("_.*", "", TCRb)
   )
 data_raw <- data_raw %>%
-  dplyr::select(-TCRb) %>%
-  dplyr::left_join(true_hits, by = "cdr3") %>%
   dplyr::select(cdr3, time, freq_in)
 emergence_levels <- c("d0", "d14", "d42")
 bad_values <- c("", "NA", "<NA>")
@@ -946,7 +941,7 @@ timepoints <- data_raw %>%
   dplyr::arrange(day) %>%
   dplyr::pull(time)
 tp_days <- as.numeric(gsub("[^0-9]", "", as.character(timepoints)))
-floor_y <- 0.001 
+floor_y <- 0.001
 data_traj <- data_raw %>%
   dplyr::mutate(
     cdr3 = as.character(cdr3),
@@ -983,8 +978,7 @@ if (length(missing_ids) > 0) {
   message("TCR.IDs from true_hits plotted at floor_y only because they were not detected in data_raw: ", paste(missing_ids, collapse = ", "))
 }
 legend_breaks <- intersect(true_ids, unique(as.character(data_traj$TCR.ID)))
-
-# --- Function ---
+# --- Log10 y scale for clonotype frequencies, from floor_y to 10 ---
 tcr_y_scale_log <- function(floor_y = 1e-3) {
   ggplot2::scale_y_log10(
     limits = c(floor_y, 10),
@@ -992,6 +986,7 @@ tcr_y_scale_log <- function(floor_y = 1e-3) {
     labels = c("0.001", "0.01", "0.1", "1", "10")
   )
 }
+# --- Classic ggplot2 theme for TCR trajectory plots ---
 tcr_theme_trajectory <- function(base_size = 8, aspect.ratio = 0.5) {
   ggplot2::theme_classic(base_size = base_size) +
     ggplot2::theme(
@@ -1007,7 +1002,6 @@ tcr_theme_trajectory <- function(base_size = 8, aspect.ratio = 0.5) {
       aspect.ratio = aspect.ratio
     )
 }
-
 # --- Plot ---
 p <- ggplot2::ggplot() +
   ggplot2::geom_vline(
@@ -1039,7 +1033,7 @@ p <- ggplot2::ggplot() +
   ggplot2::labs(
     x = NULL,
     y = expression(atop("Frequency of unique", paste("CDR3", beta, " amino acid seq (%)"))),
-    title = "Longitudinal CDR3 beta trajectories of true hits by emergence"
+    title = "Longitudinal CDR3 beta trajectories of tumor-reactive TCRs by emergence"
   ) +
   tcr_theme_trajectory()
 ggsave(filename = file.path(plot_dir, paste0("Figure3f_", compartment, "_trajectory_reactive_IDs.pdf")), width = 17.5, height = 7.5, plot = p)
@@ -1091,15 +1085,17 @@ Piecharts PD-1_enrichment
 ```{r}
 cluster_col <- stacas_col
 category_col <- "enrichment"
-p <- plot_cluster_percentages(obj,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = c("bulk" = "gray80", "pd1" = "#3c4b99"),
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = c("bulk" = "gray80", "pd1" = "#3c4b99"),
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS7e_", compartment, "_piechart_PD-1_enrichment.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
@@ -1136,140 +1132,176 @@ criteria_levels <- criteria_levels[criteria_levels %in% unique(criteria_simplifi
 criteria_levels <- c(setdiff(criteria_levels, "Non tested"), "Non tested")
 obj$criteria_simplified <- factor(criteria_simplified_chr, levels = criteria_levels)
 pt_size_vec <- ifelse(as.character(obj$criteria_simplified) == "Non tested", 0.1, 0.3)
-p <- DimPlot(obj,
-             reduction = "umap",
-             group.by = "criteria_simplified",
-             pt.size = pt_size_vec,
-             order = setdiff(criteria_levels, "Non tested"),
-             cols = criteria_colors[criteria_levels],
-             label = FALSE) + 
-  ggtitle(paste0("Tested_",
-                 length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
-                 "_TCRs")) +
+p <- DimPlot(
+  obj,
+  reduction = "umap",
+  group.by = "criteria_simplified",
+  pt.size = pt_size_vec,
+  order = setdiff(criteria_levels, "Non tested"),
+  cols = criteria_colors[criteria_levels],
+  label = FALSE
+) +
+  ggtitle(paste0(
+    "Tested_",
+    length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
+    "_TCRs"
+  )) +
   theme(aspect.ratio = 1)
 ggsave(filename = file.path(plot_dir, paste0("FigureS7e_", compartment, "_umap_tested_TCRs.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
 
 ### Fig. S8a
+
 Dotplots phenotype
 
 ```{r}
-
-# Set the order of identities in the Seurat object
-my.order <- c("CD8 TCM",
-              "CD8 activated TCM-like",
-              "CD8 activated TEM GZMK+",
-              "CD8 LEF1+ ZNF683+",
-              "CD8 TEMRA FGFBP2+",
-              "CD8 TEMRA LILRB1+",
-              "CD8 proliferating"
-              )
-obj$manual.annotation <- factor(obj$manual.annotation,
-                                levels = my.order)
-# Define genes grouped by cellular program
-genes <- list(
-  "TCM-like" = c("TCF7",
-                 "LEF1",
-                 "IL7R",
-                 "CCR7",
-                 "SELL",
-                 "S1PR1"),
-  "Activated TCM-like" = c("AREG",
-                           "SOCS3",
-                           "NFKBIA",
-                           "CD83",
-                           "EGR1"),
-  "GZMK/HLA-II activation" = c("GZMK",
-                               "GZMA",
-                               "HLA-DRA",
-                               "HLA-DPA1",
-                               "HLA-DPB1"),
-  "LEF1+/ZNF683+" = c("ZNF683",
-                      "IKZF2",
-                      "KLRC2",
-                      "KLRC3",
-                      "NCR3",
-                      "XCL1"),
-  "Cytotoxic effector" = c("FGFBP2",
-                           "GZMB",
-                           "GZMH",
-                           "GNLY",
-                           "PRF1"),
-  "LILRB1+/FCGR3A+" = c("LILRB1",
-                        "FCGR3A",
-                        "ADGRG1"),
-  "Proliferation" = c("MKI67",
-                      "STMN1",
-                      "PCLAF",
-                      "TOP2A",
-                      "NUSAP1")
+my.order <- c(
+  "CD8 TCM",
+  "CD8 LEF1+ ZNF683+",
+  "CD8 activated TEM GZMK+",
+  "CD8 TEM KLRG1+",
+  "CD8 TEMRA FGFBP2+",
+  "CD8 TEMRA LILRB1+",
+  "CD8 activated/proliferating"
 )
-# Check which genes are absent from the selected assay
-missing.genes <- setdiff(unique(unlist(genes)),
-                         rownames(obj[["RNA"]]))
+obj$manual.annotation <- factor(
+  obj$manual.annotation,
+  levels = my.order
+)
+# --- Marker genes grouped by cellular program ---
+genes <- list(
+  "TCM" = c(
+    "TCF7",
+    "LEF1",
+    "IL7R",
+    "CCR7",
+    "SELL",
+    "S1PR1"
+  ),
+  "LEF1+/ZNF683+" = c(
+    "ZNF683",
+    "IKZF2",
+    "KLRC2",
+    "KLRC3",
+    "NCR3",
+    "XCL1"
+  ),
+  "GZMK/HLA-II activation" = c(
+    "GZMK",
+    "GZMA",
+    "HLA-DRA",
+    "HLA-DPA1",
+    "HLA-DPB1"
+  ),
+  "KLRG1+ TEM" = c(
+    "KLRG1",
+    "EOMES",
+    "CD160",
+    "CMC1"
+  ),
+  "Cytotoxic effector" = c(
+    "FGFBP2",
+    "GZMB",
+    "GZMH",
+    "GNLY",
+    "PRF1"
+  ),
+  "LILRB1+/FCGR3A+" = c(
+    "LILRB1",
+    "FCGR3A",
+    "ADGRG1"
+  ),
+  "Activation/proliferation" = c(
+    "CD38",
+    "MKI67",
+    "STMN1",
+    "PCLAF",
+    "TOP2A",
+    "NUSAP1"
+  )
+)
+missing.genes <- setdiff(
+  unique(unlist(genes)),
+  rownames(obj[["RNA"]])
+)
 if (length(missing.genes) > 0) {
-  message("Genes not found in the RNA assay: ",
-          paste(missing.genes, collapse = ", "))
+  message(
+    "Genes not found in the RNA assay: ",
+    paste(missing.genes, collapse = ", ")
+  )
 }
-# Remove genes absent from the selected assay
-genes <- lapply(genes,
-                function(x) x[x %in% rownames(obj[["RNA"]])])
-# Remove empty gene groups
+genes <- lapply(
+  genes,
+  function(x) x[x %in% rownames(obj[["RNA"]])]
+)
 genes <- genes[lengths(genes) > 0]
-# Generate dot plot
-# Pass genes as a vector and facet by group manually: Seurat 5.3.0 uses
-# facet_grid(facets = ...) for named lists, which is defunct in ggplot2 >= 4.0
-p <- DotPlot(obj,
-             group.by = "manual.annotation",
-             features = unlist(genes, use.names = FALSE),
-             assay = "RNA",
-             cols = "RdBu",
-             scale = TRUE,
-             scale.by = "size",
-             dot.scale = 6,
-             dot.min = 0.05,
-             col.min = -2,
-             col.max = 2
-             )
-p$data$feature.groups <- factor(rep(names(genes), lengths(genes))[match(p$data$features.plot, unlist(genes, use.names = FALSE))],
-                                levels = names(genes))
+# --- Facet manually: Seurat 5.3.0 uses facet_grid(facets =) for lists, defunct in ggplot2 >= 4.0 ---
+p <- DotPlot(
+  obj,
+  group.by = "manual.annotation",
+  features = unlist(genes, use.names = FALSE),
+  assay = "RNA",
+  cols = "RdBu",
+  scale = TRUE,
+  scale.by = "size",
+  dot.scale = 6,
+  dot.min = 0.05,
+  col.min = -2,
+  col.max = 2
+)
+p$data$feature.groups <- factor(
+  rep(names(genes), lengths(genes))[match(p$data$features.plot, unlist(genes, use.names = FALSE))],
+  levels = names(genes)
+)
 p <- p +
-  facet_grid(cols = vars(feature.groups),
-             scales = "free_x",
-             space = "free_x") +
-  labs(x = NULL,
-       y = NULL,
-       color = "Scaled average\nexpression",
-       size = "Percent\nexpressed"
-       ) +
+  facet_grid(
+    cols = vars(feature.groups),
+    scales = "free_x",
+    space = "free_x"
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    color = "Scaled average\nexpression",
+    size = "Percent\nexpressed"
+  ) +
   theme_classic(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 45,
-                                   hjust = 1,
-                                   vjust = 1,
-                                   size = 9),
-        axis.text.y = element_text(size = 10),
-        strip.background = element_blank(),
-        strip.text.x = element_text(face = "bold",
-                                    size = 10,
-                                    margin = margin(b = 7)),
-        panel.spacing.x = grid::unit(0.7, "lines"),
-        legend.position = "right",
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 9)
-        ) +
-  guides(color = guide_colorbar(order = 1,
-                                title.position = "top"),
-         size = guide_legend(order = 2,
-                             title.position = "top")
-         )
-# Save plot
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      vjust = 1,
+      size = 9
+    ),
+    axis.text.y = element_text(size = 10),
+    strip.background = element_blank(),
+    strip.text.x = element_text(
+      face = "bold",
+      size = 10,
+      margin = margin(b = 7)
+    ),
+    panel.spacing.x = grid::unit(0.7, "lines"),
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  guides(
+    color = guide_colorbar(
+      order = 1,
+      title.position = "top"
+    ),
+    size = guide_legend(
+      order = 2,
+      title.position = "top"
+    )
+  )
 ggsave(filename = file.path(plot_dir, paste0("FigureS8a_", compartment, "_dotplot_phenotypes.pdf")), width = 15, height = 5, plot = p)
 print(p)
-
 ```
 
 ### Fig. S8b
+
 UMAP temporal cloneSize
 
 ```{r}
@@ -1296,15 +1328,17 @@ Barplots cloneSize on day 14
 obj.sub <- subset(obj, subset = time == "post1")
 cluster_col <- "manual.annotation"
 category_col <- "cloneSize"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = clone_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = clone_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8b_", compartment, "_barplot_cloneSize_day14.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
@@ -1313,20 +1347,23 @@ print(p)
 obj.sub <- subset(obj, subset = time == "post2")
 cluster_col <- "manual.annotation"
 category_col <- "cloneSize"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = clone_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = clone_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8b_", compartment, "_barplot_cloneSize_day42.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
 
 ### Fig. S8c
+
 Temporal TCR library distribution (UMAP)
 
 ```{r}
@@ -1340,98 +1377,112 @@ criteria_levels <- c(setdiff(names(criteria_colors), "Non tested"), "Non tested"
 criteria_levels <- criteria_levels[criteria_levels %in% unique(criteria_simplified_chr)]
 criteria_levels <- c(setdiff(criteria_levels, "Non tested"), "Non tested")
 obj$criteria_simplified <- factor(criteria_simplified_chr, levels = criteria_levels)
-p <- DimPlot(obj,
-             reduction = "umap",
-             group.by = "criteria_simplified",
-             split.by = "time",
-             pt.size = 0.25,
-             order = setdiff(criteria_levels, "Non tested"),
-             cols = criteria_colors[criteria_levels],
-             label = FALSE) + 
-  ggtitle(paste0("Tested_",
-                 length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
-                 "_TCRs")) +
+p <- DimPlot(
+  obj,
+  reduction = "umap",
+  group.by = "criteria_simplified",
+  split.by = "time",
+  pt.size = 0.25,
+  order = setdiff(criteria_levels, "Non tested"),
+  cols = criteria_colors[criteria_levels],
+  label = FALSE
+) +
+  ggtitle(paste0(
+    "Tested_",
+    length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
+    "_TCRs"
+  )) +
   theme(aspect.ratio = 1)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8c_", compartment, "_umap_tested_TCRs_time.pdf")), width = 12.5, height = 7.5, plot = p)
 print(p)
 ```
 
-Barplots cloneSize on day 0
+Barplots of TCR-library selection criteria on day 0
 
 ```{r}
 obj.sub <- subset(obj, subset = time == "pre")
 cluster_col <- "manual.annotation"
 category_col <- "criteria_simplified"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = criteria_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = criteria_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8c_", compartment, "_barplot_TCRlibrary_day0.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
 
-Barplots cloneSize on day 14
+Barplots of TCR-library selection criteria on day 14
 
 ```{r}
 obj.sub <- subset(obj, subset = time == "post1")
 cluster_col <- "manual.annotation"
 category_col <- "criteria_simplified"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = criteria_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = criteria_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8c_", compartment, "_barplot_TCRlibrary_day14.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
-Barplots cloneSize on day 42
+
+Barplots of TCR-library selection criteria on day 42
 
 ```{r}
 obj.sub <- subset(obj, subset = time == "post2")
 cluster_col <- "manual.annotation"
 category_col <- "criteria_simplified"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = criteria_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = criteria_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8c_", compartment, "_barplot_TCRlibrary_day42.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
 
-Barplots cloneSize on day 140
+Barplots of TCR-library selection criteria on day 140
 
 ```{r}
 obj.sub <- subset(obj, subset = time == "post6")
 cluster_col <- "manual.annotation"
 category_col <- "criteria_simplified"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = criteria_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = criteria_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8c_", compartment, "_barplot_TCRlibrary_day140.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
 
 ### Fig. S8d
+
 General overview of reactive PBL distribution.
 
 ```{r}
@@ -1464,10 +1515,7 @@ plot_df$point_size <- ifelse(
   plot_df$reactivity_plot == "Yes", 1,
   ifelse(plot_df$reactivity_plot %in% c("No", "Auto-reactive", "EBV", "CMV"), 0.5, 0.25)
 )
-plot_df$point_alpha <- ifelse(
-  plot_df$reactivity_plot == "Yes", 1,
-  ifelse(plot_df$reactivity_plot %in% c("No", "Auto-reactive", "EBV", "CMV"), 0.75, 0.75)
-)
+plot_df$point_alpha <- ifelse(plot_df$reactivity_plot == "Yes", 1, 0.75)
 plot_df$draw_priority <- match(as.character(plot_df$reactivity_plot), draw_order)
 plot_df <- plot_df[order(plot_df$draw_priority), , drop = FALSE]
 p <- ggplot2::ggplot(
@@ -1506,40 +1554,46 @@ print(p)
 ```
 
 ### Fig. S8e
-Additional alluvial plots are generated for Fig. 3b.
+
+Additional alluvial plots are generated for Fig. 3c.
 Piechart phenotype of Non-reactive
 
 ```{r}
 obj.sub <- subset(obj, subset = reactivity == "No")
 cluster_col <- "time"
 category_col <- "manual.annotation"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = manual_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = manual_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8e_", compartment, "_piechart_pheno_NR.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
+
 Piechart phenotype of Auto-reactive
 
 ```{r}
 obj.sub <- subset(obj, subset = reactivity == "Auto-reactive")
 cluster_col <- "time"
 category_col <- "manual.annotation"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = manual_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = manual_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8e_", compartment, "_piechart_pheno_Auto-reactive.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
@@ -1550,15 +1604,17 @@ Piechart phenotype of EBV
 obj.sub <- subset(obj, subset = reactivity == "EBV")
 cluster_col <- "time"
 category_col <- "manual.annotation"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = manual_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = manual_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8e_", compartment, "_piechart_pheno_EBV.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
@@ -1569,18 +1625,21 @@ Piechart phenotype of CMV
 obj.sub <- subset(obj, subset = reactivity == "CMV")
 cluster_col <- "time"
 category_col <- "manual.annotation"
-p <- plot_cluster_percentages(obj.sub,
-                               clusters = cluster_col, 
-                               category = category_col,
-                               title = paste0(cluster_col, "_", category_col),
-                               colors = manual_colors,
-                               horizontal = FALSE,
-                               exclude = "none", # NA | none
-                               limits = NULL,
-                               remove = FALSE)  # TRUE | FALSE
+p <- plot_cluster_percentages(
+  obj.sub,
+  clusters = cluster_col,
+  category = category_col,
+  title = paste0(cluster_col, "_", category_col),
+  colors = manual_colors,
+  horizontal = FALSE,
+  exclude = "none",
+  limits = NULL,
+  remove = FALSE
+)
 ggsave(filename = file.path(plot_dir, paste0("FigureS8e_", compartment, "_piechart_pheno_CMV.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
 ```
+
 ### Fig. S9a
 
 General overview of PBL-TIL distribution.
@@ -1596,7 +1655,8 @@ if (!alluvial_col %in% colnames(obj@meta.data)) {
 }
 state_global <- as.character(obj@meta.data[[alluvial_col]])
 state_global <- ifelse(is.na(state_global) | state_global %in% c("", "NA", "<NA>"), alluvial_na_label, state_global)
-state_levels <- sort(unique(state_global))
+state_levels <- unique(state_global)
+state_levels <- c(intersect(names(alluvial_palette), state_levels), sort(setdiff(state_levels, names(alluvial_palette))))
 state_levels <- state_levels[!is.na(state_levels)]
 if (is.null(names(alluvial_palette))) {
   state_cols <- setNames(alluvial_palette[seq_along(state_levels)], state_levels)
@@ -1649,6 +1709,7 @@ p <- ggplot2::ggplot(
     x = "Time",
     y = "Number of cells"
   ) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = alluvial_col, nrow = 2, byrow = TRUE)) +
   ggplot2::theme_minimal() +
   ggplot2::theme(
     aspect.ratio = 0.5,
@@ -1684,6 +1745,9 @@ plot_titles <- c(
   Auto_reactive = "Auto-reactive PBL-TIL",
   CMV_EBV = "Viral-reactive PBL-TIL"
 )
+# --- Drop reactivity sets without any PBL-TIL cell (they would give an empty panel) ---
+reactivity_sets <- reactivity_sets[vapply(reactivity_sets, function(x) any(obj$tumor %in% "yes" & obj$reactivity %in% x), logical(1))]
+plot_titles <- plot_titles[names(reactivity_sets)]
 time_levels <- c("pre", "post1", "post2", "post6")
 context_cols <- c(
   "Tumor+tested" = "gray20",
@@ -1881,7 +1945,8 @@ df <- obj@meta.data %>%
     state = ifelse(is.na(state) | state %in% c("", "NA", "<NA>"), alluvial_na_label, state)
   ) %>%
   dplyr::select(id, time, state)
-state_levels <- sort(unique(as.character(df$state)))
+state_levels <- unique(as.character(df$state))
+state_levels <- c(intersect(names(alluvial_palette), state_levels), sort(setdiff(state_levels, names(alluvial_palette))))
 state_levels <- state_levels[!is.na(state_levels)]
 if (is.null(names(alluvial_palette))) {
   state_cols <- setNames(alluvial_palette[seq_along(state_levels)], state_levels)
@@ -1920,7 +1985,6 @@ max_y <- df_summary %>%
   dplyr::summarise(total = sum(n), .groups = "drop") %>%
   dplyr::pull(total) %>%
   max(na.rm = TRUE)
-
 # --- Plot ---
 p <- ggplot2::ggplot(
   df_summary,
@@ -1950,7 +2014,7 @@ p <- ggplot2::ggplot(
   ggplot2::guides(
     fill = ggplot2::guide_legend(
       title = alluvial_col,
-      nrow = 1,
+      nrow = 2,
       byrow = TRUE
     )
   ) +
@@ -1980,16 +2044,12 @@ sample <- "vhio136"
 compartment <- "cd8_int"
 obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds")))
 obj@meta.data$time <- factor(obj@meta.data$time, levels = c("pre", "post1", "post2", "post6"))
-plots_list <- list()
-
-# Keep the latest STACAS reduction
+# --- Keep the latest STACAS reduction ---
 stacas_cols <- grep("^STACAS_snn_res\\.", colnames(obj@meta.data), value = TRUE)
 if (!length(stacas_cols)) stop("No STACAS_snn_res.* columns found.")
 stacas_col <- tail(stacas_cols, 1)
 obj@meta.data[head(stacas_cols, -1)] <- NULL
 stacas_col
-
-# Save plots
 if (!dir.exists(plot_dir)) {
   dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
 }
@@ -2094,16 +2154,20 @@ criteria_levels <- c(setdiff(names(criteria_colors), "Non tested"), "Non tested"
 criteria_levels <- criteria_levels[criteria_levels %in% unique(criteria_simplified_chr)]
 criteria_levels <- c(setdiff(criteria_levels, "Non tested"), "Non tested")
 obj$criteria_simplified <- factor(criteria_simplified_chr, levels = criteria_levels)
-p <- DimPlot(obj,
-             reduction = "umap",
-             group.by = "criteria_simplified",
-             pt.size = 0.15,
-             order = setdiff(criteria_levels, "Non tested"),
-             cols = criteria_colors[criteria_levels],
-             label = FALSE) + 
-  ggtitle(paste0("Tested_",
-                 length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
-                 "_TCRs")) +
+p <- DimPlot(
+  obj,
+  reduction = "umap",
+  group.by = "criteria_simplified",
+  pt.size = 0.15,
+  order = setdiff(criteria_levels, "Non tested"),
+  cols = criteria_colors[criteria_levels],
+  label = FALSE
+) +
+  ggtitle(paste0(
+    "Tested_",
+    length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
+    "_TCRs"
+  )) +
   theme(aspect.ratio = 1)
 ggsave(filename = file.path(plot_dir, paste0("FigureS7c_", compartment, "_umap_tested_TCRs.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)
@@ -2128,9 +2192,7 @@ sample <- "vhio136"
 compartment <- "cd4_int"
 obj <- readRDS(file.path(int_dir, "seurat", paste0(compartment, ".rds")))
 obj@meta.data$time <- factor(obj@meta.data$time, levels = c("pre", "post1", "post2", "post6"))
-plots_list <- list()
-
-# Keep the latest STACAS reduction
+# --- Keep the latest STACAS reduction ---
 stacas_cols <- grep("^STACAS_snn_res\\.", colnames(obj@meta.data), value = TRUE)
 if (!length(stacas_cols)) stop("No STACAS_snn_res.* columns found.")
 stacas_col <- tail(stacas_cols, 1)
@@ -2237,16 +2299,20 @@ criteria_levels <- c(setdiff(names(criteria_colors), "Non tested"), "Non tested"
 criteria_levels <- criteria_levels[criteria_levels %in% unique(criteria_simplified_chr)]
 criteria_levels <- c(setdiff(criteria_levels, "Non tested"), "Non tested")
 obj$criteria_simplified <- factor(criteria_simplified_chr, levels = criteria_levels)
-p <- DimPlot(obj,
-             reduction = "umap",
-             group.by = "criteria_simplified",
-             pt.size = 0.15,
-             order = setdiff(criteria_levels, "Non tested"),
-             cols = criteria_colors[criteria_levels],
-             label = FALSE) + 
-  ggtitle(paste0("Tested_",
-                 length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
-                 "_TCRs")) +
+p <- DimPlot(
+  obj,
+  reduction = "umap",
+  group.by = "criteria_simplified",
+  pt.size = 0.15,
+  order = setdiff(criteria_levels, "Non tested"),
+  cols = criteria_colors[criteria_levels],
+  label = FALSE
+) +
+  ggtitle(paste0(
+    "Tested_",
+    length(unique(unlist(strsplit(as.character(na.omit(obj$matched_ID)), ";")))),
+    "_TCRs"
+  )) +
   theme(aspect.ratio = 1)
 ggsave(filename = file.path(plot_dir, paste0("FigureS7c_", compartment, "_umap_tested_TCRs.pdf")), width = 7.5, height = 7.5, plot = p)
 print(p)

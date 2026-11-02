@@ -86,7 +86,7 @@ def exec_command(cmd):
             logger.error(line.rstrip())
         for line in error.decode("utf-8").split("\n") if error else "":
             logger.error(line.rstrip())
-        sys.exit()
+        sys.exit(1)
 
 
 # --------------------------------------------------
@@ -128,75 +128,77 @@ def main():
     logger = logging.getLogger() # creates riboseq logger to add entries to the log
 
     
-    # # fastp: fast all-in-one preprocessing for FastQ files (https://github.com/OpenGene/fastp)
-    # # adapter trimming is disabled (--disable_adapter_trimming) because it doesn't work here
-    # logger.info("****** Fastp: umi extraction + dedup + qc ******\n")
-    # fastp1 = re.sub("\..*", "", os.path.basename(r1)).replace(".*", "")
-    # fastp2 = re.sub("\..*", "", os.path.basename(r2)).replace(".*", "")
-    # cmd = "fastp -i {r1} \
-    #     -I {r2} \
-    #     -o {outtmp}/{output1}.r1.fastp.fq \
-    #     -O {outtmp}/{output2}.r2.fastp.fq \
-    #     --disable_adapter_trimming \
-    #     --length_required 100 \
-    #     --umi \
-    #     --umi_len 16 \
-    #     --umi_loc read2 \
-    #     --umi_prefix UMI \
-    #     --dedup \
-    #     -h {html} \
-    #     -j {json}".format(
-    #         r1 = r1,
-    #         r2 = r2,
-    #         outtmp = outtmp,
-    #         output1 = fastp1,
-    #         output2 = fastp2,
-    #         html = f'{sample}.fastp.html',
-    #         json = f'{sample}.fastp.json') # minimum read length and dedup options
-    # exec_command(cmd)
+    # fastp: fast all-in-one preprocessing for FastQ files (https://github.com/OpenGene/fastp)
+    # adapter trimming is disabled (--disable_adapter_trimming) because it doesn't work here
+    logger.info("****** Fastp: umi extraction + dedup + qc ******\n")
+    fastp1 = re.sub("\..*", "", os.path.basename(r1)).replace(".*", "")
+    fastp2 = re.sub("\..*", "", os.path.basename(r2)).replace(".*", "")
+    cmd = "fastp -i {r1} \
+        -I {r2} \
+        -o {outtmp}/{output1}.r1.fastp.fq \
+        -O {outtmp}/{output2}.r2.fastp.fq \
+        --disable_adapter_trimming \
+        --length_required 100 \
+        --umi \
+        --umi_len 16 \
+        --umi_loc read2 \
+        --umi_prefix UMI \
+        --dedup \
+        -h {html} \
+        -j {json}".format(
+            r1 = r1,
+            r2 = r2,
+            outtmp = outtmp,
+            output1 = fastp1,
+            output2 = fastp2,
+            html = f'{sample}.fastp.html',
+            json = f'{sample}.fastp.json') # minimum read length and dedup options
+    exec_command(cmd)
 
-    # # Cutadapt: trimming of shared sequences in 5' of each reads
-    # # for read1 (to trim as an internal adapter, because of the stagger N {0,3})GAAACACCTTGTTCAGGTCCTC
-    # # for read2 (after 16n-UMI extraction): AGGGGTAGTCTCCTCACCTG[ATCG]{28}ATG
-    # logger.info("****** Cutadapt: trimming of shared sequences in 5' of each read ******\n")
-    # cmd = f"cutadapt \
-    #     -g GAAACACCTTGTTCAGGTCCTC \
-    #     -G 'AGGGGTAGTCTCCTCACCTGN{{28}}ATG' \
-    #     -o {outtmp}/{sample}.out.1.fastq \
-    #     -p {outtmp}/{sample}.out.2.fastq \
-    #     {outtmp}/{fastp1}.r1.fastp.fq \
-    #     {outtmp}/{fastp2}.r2.fastp.fq \
-    #     --cores={threads} \
-    #     && rm -rf {outtmp}/{fastp1}.r1.fastp.fq \
-    #     {outtmp}/{fastp2}.r2.fastp.fq"
-    # logger = logging.getLogger()
-    # logger.info(cmd)
-    # logfile = open(f"{sample}_{log}","a")
-    # p = subprocess.Popen(cmd, shell=True, stdout=logfile, stderr=subprocess.STDOUT, executable='/bin/bash')
-    # output, error = p.communicate()
-    # if p.returncode != 0:
-    #     for line in output.decode("utf-8").split("\n") if output else "":
-    #         logger.error(line.rstrip())
-    #     for line in error.decode("utf-8").split("\n") if error else "":
-    #         logger.error(line.rstrip())
-    #     sys.exit()
+    # Cutadapt: trimming of shared sequences in 5' of each reads
+    # for read1 (to trim as an internal adapter, because of the stagger N {0,3})GAAACACCTTGTTCAGGTCCTC
+    # for read2 (after 16n-UMI extraction): AGGGGTAGTCTCCTCACCTG[ATCG]{28}ATG
+    logger.info("****** Cutadapt: trimming of shared sequences in 5' of each read ******\n")
+    cmd = f"cutadapt \
+        -g GAAACACCTTGTTCAGGTCCTC \
+        -G 'AGGGGTAGTCTCCTCACCTGN{{28}}ATG' \
+        -o {outtmp}/{sample}.out.1.fastq \
+        -p {outtmp}/{sample}.out.2.fastq \
+        {outtmp}/{fastp1}.r1.fastp.fq \
+        {outtmp}/{fastp2}.r2.fastp.fq \
+        --cores={threads} \
+        && rm -rf {outtmp}/{fastp1}.r1.fastp.fq \
+        {outtmp}/{fastp2}.r2.fastp.fq"
+    logger = logging.getLogger()
+    logger.info(cmd)
+    logfile = open(f"{sample}_{log}","a")
+    p = subprocess.Popen(cmd, shell=True, stdout=logfile, stderr=subprocess.STDOUT, executable='/bin/bash')
+    output, error = p.communicate()
+    if p.returncode != 0:
+        for line in output.decode("utf-8").split("\n") if output else "":
+            logger.error(line.rstrip())
+        for line in error.decode("utf-8").split("\n") if error else "":
+            logger.error(line.rstrip())
+        sys.exit(1)
 
-    # # Eliminate reads with length 0 in R2 (and also from R1)
-    # logger.info("****** Eliminate reads with length 0 in R2 (and also from R1) ******\n")
-    # cmd = f"seqkit seq -M 0 {outtmp}/{sample}.out.2.fastq > {outtmp}/{sample}.out.2.len0.fastq"
-    # exec_command(cmd)
-    # cmd = f"cat {outtmp}/{sample}.out.2.len0.fastq | head -1 > {outtmp}/{sample}.out.2.len0.ids.txt && cat {outtmp}/{sample}.out.2.len0.fastq | tail +2 | awk 'NR % 4 == 0' >> {outtmp}/{sample}.out.2.len0.ids.txt"
-    # exec_command(cmd)
-    # cmd = f"sed -i '' -e 's/ 2:N:0.*/\*/g' {outtmp}/{sample}.out.2.len0.ids.txt"
-    # exec_command(cmd)
-    # cmd = f"sed -i '' -e 's/^@//g' {outtmp}/{sample}.out.2.len0.ids.txt"
-    # exec_command(cmd)
-    # cmd= f"seqkit grep -vrnf {outtmp}/{sample}.out.2.len0.ids.txt {outtmp}/{sample}.out.2.fastq -o {outtmp}/{sample}.out.2.no_zero.fastq"
-    # exec_command(cmd)
-    # cmd= f"seqkit grep -vrnf {outtmp}/{sample}.out.2.len0.ids.txt {outtmp}/{sample}.out.1.fastq -o {outtmp}/{sample}.out.1.no_zero.fastq"
-    # exec_command(cmd)
+    # Eliminate reads with length 0 in R2 (and also from R1)
+    logger.info("****** Eliminate reads with length 0 in R2 (and also from R1) ******\n")
+    cmd = f"seqkit seq -M 0 {outtmp}/{sample}.out.2.fastq > {outtmp}/{sample}.out.2.len0.fastq"
+    exec_command(cmd)
+    cmd = f"cat {outtmp}/{sample}.out.2.len0.fastq | head -1 > {outtmp}/{sample}.out.2.len0.ids.txt && cat {outtmp}/{sample}.out.2.len0.fastq | tail +2 | awk 'NR % 4 == 0' >> {outtmp}/{sample}.out.2.len0.ids.txt"
+    exec_command(cmd)
+    cmd = f"sed -i -e 's/ 2:N:0.*/\*/g' {outtmp}/{sample}.out.2.len0.ids.txt"
+    exec_command(cmd)
+    cmd = f"sed -i -e 's/^@//g' {outtmp}/{sample}.out.2.len0.ids.txt"
+    exec_command(cmd)
+    cmd= f"seqkit grep -vrnf {outtmp}/{sample}.out.2.len0.ids.txt {outtmp}/{sample}.out.2.fastq -o {outtmp}/{sample}.out.2.no_zero.fastq"
+    exec_command(cmd)
+    cmd= f"seqkit grep -vrnf {outtmp}/{sample}.out.2.len0.ids.txt {outtmp}/{sample}.out.1.fastq -o {outtmp}/{sample}.out.1.no_zero.fastq"
+    exec_command(cmd)
    
     # bowtie2 alignment
+    # default mode (one alignment per read, no -a): -a reports every alignment of a multimapping read,
+    # and the codon variants of each TCR share most of their sequence, so -a counts reads several times
     if os.path.exists(f"{os.path.dirname(lib)}/bowtie2_indices/tcrlib.1.bt2"):
         logger.info("****** Bowtie2: fastq alignment to library ******\n")
         cmd = f"bowtie2 \
@@ -207,13 +209,12 @@ def main():
                 -2 {outtmp}/{sample}.out.2.no_zero.fastq \
                 --no-unal \
                 -x {os.path.dirname(lib)}/bowtie2_indices/tcrlib \
-                -a \
                 > {sample}.sam \
                 2> >(tee -a {sample}_{log} >&2)"
         exec_command(cmd)
     else:
         print("Bowtie2 indices not found –> Run bowtie2indices.py first")
-        sys.exit()
+        sys.exit(1)
 
     # Compute counts for each TCR
     logger.info("****** Computing counts for each candidate TCR ******\n")

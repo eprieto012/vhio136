@@ -1,0 +1,14 @@
+[gene-expression]
+reference,[path-to-refs]/refdata-gex-GRCh38-2020-A
+
+[vdj]
+reference,[path-to-refs]/refdata-cellranger-vdj-GRCh38-alts-ensembl-7.0.0
+
+[feature]
+reference,[path-to-this-folder]/TotalSeqC_HS_antibodyFeatureRef.csv
+
+[libraries]
+fastq_id,fastqs,lanes,feature_types,subsample_rate
+[GEX-fastq-id],[path-to-GEX-fastqs],,Gene Expression,
+[CSP-fastq-id],[path-to-CSP-fastqs],,Antibody Capture,
+[VDJ-fastq-id],[path-to-VDJ-fastqs],,VDJ-T,

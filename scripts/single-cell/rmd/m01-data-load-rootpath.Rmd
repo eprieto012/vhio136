@@ -1,5 +1,5 @@
 ---
-title: "m01_data_load_vhio_latest"
+title: "m01-data-load-rootpath"
 author: "Endika Prieto <endikaprieto@vhio.net>"
 date: "2026-10-23"
 output: html_document
@@ -9,10 +9,10 @@ output: html_document
 
 ```{r setup, message=FALSE, warning=FALSE}
 setup_dir <- normalizePath("../setup", mustWork = TRUE)
-source(file.path(setup_dir, "setup.R"))
+source(file.path(setup_dir, "setup.R"), local = TRUE)
 plots_list <- list()
 sample <- "vhio136"
-batch_dir <- file.path(datapath, sample, "vhio")
+batch_dir <- file.path(datapath, "rootpath")
 ```
 
 # load
@@ -22,20 +22,20 @@ Estimation of ambient RNA contamination using SoupX:
 <https://www.sc-best-practices.org/preprocessing_visualization/quality_control.html>
 <https://cellgeni.github.io/notebooks/html/new-10kPBMC-SoupX.html>
 
-SoupX is used as a QC step only: the contamination fraction (rho) is estimated per sample, but counts are not corrected (no adjustCounts()), so the downstream object is built from the uncorrected matrix. autoEstCont() relies on cluster-specific genes, which are scarce in sorted T cells, so the estimate is fragile; forceAccept = TRUE only prevents the run from stopping when an implausible value is estimated. Estimated rho = 0.01 in all samples.
+SoupX is used as a QC step only: the contamination fraction (rho) is estimated per sample, but counts are not corrected (no adjustCounts()), so the downstream object is built from the uncorrected matrix. autoEstCont() relies on cluster-specific genes, which are scarce in sorted T cells, so the estimate is fragile; forceAccept = TRUE only prevents the run from stopping when an implausible value is estimated. Estimated rho = 0.01 in all samples except post2_d42_pd1 (0.60), which SoupX itself flags as a failure of the estimation rather than real contamination.
 
 ```{r}
-folder_data <- "vhio"
+folder_data <- file.path("single-cell", "rootpath")
 object_files <- list.files(file.path(datapath_load, folder_data))
-object_tags <- c("post1_bulk", "post1_pd1", "post6_bulk", "post6_pd1")
-object_VH <- list()
-soupX_VH <- list()
+object_tags <- c("post2_bulk1", "post2_bulk2", "post2_bulk3", "post2_pd1", "pre_bulk1", "pre_bulk2", "pre_bulk3", "pre_pd1")
+object_RP <- list()
+soupX_RP <- list()
 for (i in seq_along(object_files)) {
   toc <- Read10X(file.path(datapath_load, folder_data, object_files[i], "sample_filtered_feature_bc_matrix"))
   toc <- toc$`Gene Expression`
   toc_seurat <- CreateSeuratObject(toc)
-  object_VH[[as.character(object_files[i])]] <- toc_seurat
-  object_VH[[as.character(object_files[i])]]$tag <- paste0(object_tags[i], "_")
+  object_RP[[as.character(object_files[i])]] <- toc_seurat
+  object_RP[[as.character(object_files[i])]]$tag <- paste0(object_tags[i], "_")
   tod <- Read10X(file.path(datapath_load, folder_data, object_files[i], "raw_feature_bc_matrix"))
   tod <- tod$`Gene Expression`
   sc <- SoupChannel(tod, toc)
@@ -53,12 +53,12 @@ for (i in seq_along(object_files)) {
   sc <- setClusters(sc, setNames(meta$seurat_clusters, rownames(meta)))
   sc <- setDR(sc, umap)
   set.seed(SEED)
-  sc  <- autoEstCont(sc, forceAccept = TRUE)
-  soupX_VH[[as.character(object_files[i])]] <- sc
-  rm(toc, toc_seurat, tod, sc, meta, umap, soup, i)
+  sc <- autoEstCont(sc, forceAccept = TRUE)
+  soupX_RP[[as.character(object_files[i])]] <- sc
+  rm(toc, toc_seurat, tod, sc, meta, umap, i)
 }
 dir.create(file.path(batch_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
-saveRDS(soupX_VH, file.path(batch_dir, "seurat", "soupX_vhio.rds"))
+saveRDS(soupX_RP, file.path(batch_dir, "seurat", "soupX_rootpath.rds"))
 rm(object_files, object_tags)
 ```
 
@@ -66,12 +66,12 @@ IC01 - Gene contribution to the SoupX.
 
 ```{r}
 plots_soupX <- list()
-for (i in names(soupX_VH)) {
-  data_i <- head(soupX_VH[[i]]$soupProfile[order(soupX_VH[[i]]$soupProfile$est, decreasing = TRUE), ], n = 50)
+for (i in names(soupX_RP)) {
+  data_i <- head(soupX_RP[[i]]$soupProfile[order(soupX_RP[[i]]$soupProfile$est, decreasing = TRUE), ], n = 50)
   data_i$gene <- as.character(row.names(data_i))
   data_i$gene <- factor(data_i$gene, levels = data_i$gene)
   data_i$source <- ifelse(grepl("^MT-", data_i$gene), "mito",
-                  ifelse(grepl("^RPS|^RPL", data_i$gene), "ribo", "other"))
+                          ifelse(grepl("^RPS|^RPL", data_i$gene), "ribo", "other"))
   plot_i <- ggplot(data_i, aes(x = gene, y = est, fill = source)) +
     geom_bar(stat = "identity") +
     ylim(0, 0.13) +
@@ -81,19 +81,19 @@ for (i in names(soupX_VH)) {
     theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), panel.grid = element_blank(), aspect.ratio = 0.5)
   plots_soupX[[as.character(i)]] <- plot_i
 }
-plots_list[["IC01_soupX"]] <- wrap_plots(plots_soupX, ncol = length(names(soupX_VH)) / 2)
-rm(soupX_VH, plots_soupX, i, data_i, plot_i)
+plots_list[["IC01_soupX"]] <- wrap_plots(plots_soupX, ncol = length(names(soupX_RP)) / 2)
+rm(soupX_RP, plots_soupX, i, data_i, plot_i)
 ```
 
 IC02 - Count distribution.
 
 ```{r, warning=FALSE}
-names <- names(object_VH)
+names <- names(object_RP)
 gene <- "CD3E"
 gpha <- lapply(
   setNames(names, names),
   function(x) {
-    df <- data.frame(counts = object_VH[[x]]@assays$RNA$counts[gene, ])
+    df <- data.frame(counts = object_RP[[x]]@assays$RNA$counts[gene, ])
     ggplot(df, aes(x = counts)) +
       geom_histogram(bins = 50) +
       ggtitle(x) +
@@ -112,10 +112,10 @@ Load VDJ data with djvdj:
 vdj_files <- list.files(file.path(datapath_load, folder_data))
 vdj_dirs <- paste0(file.path(datapath_load, folder_data), "/", vdj_files)
 vdj_dirs <- setNames(vdj_dirs, vdj_files)
-for (i in seq_along(vdj_dirs)){
-  so <- object_VH[[i]]
+for (i in seq_along(vdj_dirs)) {
+  so <- object_RP[[i]]
   so <- import_vdj(so, vdj_dir = vdj_dirs[[i]])
-  object_VH[[i]] <- so
+  object_RP[[i]] <- so
 }
 rm(vdj_files, vdj_dirs, so)
 ```
@@ -123,54 +123,53 @@ rm(vdj_files, vdj_dirs, so)
 Tag each sample by time, enrichment and sample.
 
 ```{r, warning=FALSE}
-post1 <- c(names[grep("post1", names)])
+post2 <- c(names[grep("post2", names)])
 cd3 <- c(names[grep("bulk", names)])
 for (i in names) {
-  object_VH[[i]]$sample <- i
-  object_VH[[i]]$time <- ifelse(i %in% post1, "post1", "post6")
-  object_VH[[i]]$enrichment <- ifelse(i %in% cd3, "bulk", "pd1")
-  object_VH[[i]]$batch <- "VH"
-  rownames <- rownames(object_VH[[i]]@meta.data)
-  rownames <- paste0(object_VH[[i]]@meta.data$tag, rownames)
-  rownames(object_VH[[i]]@meta.data) <- rownames
-  names(object_VH[[i]]@active.ident) <- rownames
-  rownames(object_VH[[i]]@assays$RNA@cells@.Data) <- rownames
+  object_RP[[i]]$sample <- i
+  object_RP[[i]]$time <- ifelse(i %in% post2, "post2", "pre")
+  object_RP[[i]]$enrichment <- ifelse(i %in% cd3, "bulk", "pd1")
+  object_RP[[i]]$batch <- "RP"
+  rownames <- rownames(object_RP[[i]]@meta.data)
+  rownames <- paste0(object_RP[[i]]@meta.data$tag, rownames)
+  rownames(object_RP[[i]]@meta.data) <- rownames
+  names(object_RP[[i]]@active.ident) <- rownames
+  rownames(object_RP[[i]]@assays$RNA@cells@.Data) <- rownames
   rm(rownames, i)
 }
-rm(post1, cd3, names)
+rm(post2, cd3, names)
 ```
 
-Merge samples from VHIO.
+Merge samples from rootpath.
 
 ```{r, warning=FALSE}
-object <- c(object_VH)
+object <- c(object_RP)
 object <- Reduce(merge, object)
 object <- JoinLayers(object)
 class(object@meta.data$tag)
 object@meta.data$tag <- factor(
   sub("_$", "", object@meta.data$tag),
-  levels = c("post1_bulk", "post1_pd1", "post6_bulk", "post6_pd1")
+  levels = c("pre_bulk1", "pre_bulk2", "pre_bulk3", "pre_pd1", "post2_bulk1", "post2_bulk2", "post2_bulk3", "post2_pd1")
 )
-rm(object_VH)
+rm(object_RP)
 ```
 
 # qc
 
 ```{r, warning=FALSE}
-#logreads.
 object$logreads <- log(colSums(object$RNA))
-# Mitochondrial and ribosomal genes.
+# --- Mitochondrial and ribosomal content ---
 object <- PercentageFeatureSet(object, pattern = "^MT-", col.name = "percent.mt")
-object <- PercentageFeatureSet(object, pattern="^RPL", col.name = "percent.rpl")
-object <- PercentageFeatureSet(object, pattern="^RPS", col.name = "percent.rps")
-object <- PercentageFeatureSet(object, pattern="^RPS|^RPL", col.name = "percent.rpa")
-# TCR genes.
-object <- PercentageFeatureSet(object, pattern="^TRAV", col.name = "TRAV.avg")
-object <- PercentageFeatureSet(object, pattern="^TRAJ", col.name = "TRAJ.avg")
-object <- PercentageFeatureSet(object, pattern="^TRBV", col.name = "TRBV.avg")
-object <- PercentageFeatureSet(object, pattern="^TRBJ", col.name = "TRBJ.avg")
-object <- PercentageFeatureSet(object, pattern="^TRGV", col.name = "TRGV.avg")
-object <- PercentageFeatureSet(object, pattern="^TRDV", col.name = "TRDV.avg")
+object <- PercentageFeatureSet(object, pattern = "^RPL", col.name = "percent.rpl")
+object <- PercentageFeatureSet(object, pattern = "^RPS", col.name = "percent.rps")
+object <- PercentageFeatureSet(object, pattern = "^RPS|^RPL", col.name = "percent.rpa")
+# --- TCR gene content ---
+object <- PercentageFeatureSet(object, pattern = "^TRAV", col.name = "TRAV.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRAJ", col.name = "TRAJ.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRBV", col.name = "TRBV.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRBJ", col.name = "TRBJ.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRGV", col.name = "TRGV.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRDV", col.name = "TRDV.avg")
 ```
 
 IC03 - Quality of cells without TCR info.
@@ -187,9 +186,9 @@ metrics <- c("percent.mt", "percent.rpa", "TRAV.avg", "TRBV.avg")
 # --- TCR cells ---
 qc_tcr <- list()
 for (i in metrics) {
-  plot_i <- ggplot(object@meta.data[n1,], aes(y = .data[[i]], x = tag, fill = tag)) +
+  plot_i <- ggplot(object@meta.data[n1, ], aes(y = .data[[i]], x = tag, fill = tag)) +
     geom_boxplot(outlier.alpha = 0.2) +
-    labs(title = paste0("TCR_cells_", i), x = "Sample", y = print(i)) +
+    labs(title = paste0("TCR_cells_", i), x = "Sample", y = i) +
     theme_ic +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           legend.position = "none",
@@ -201,14 +200,14 @@ for (i in metrics) {
     plot_i <- plot_i +
       geom_hline(yintercept = 10, linetype = "dashed", color = "black", linewidth = 0.3)
   }
-    qc_tcr[[i]] <- plot_i
+  qc_tcr[[i]] <- plot_i
 }
 # --- No TCR cells ---
 qc_no_tcr <- list()
 for (i in metrics) {
-  plot_i <- ggplot(object@meta.data[n2,], aes(y = .data[[i]], x = tag, fill = tag)) +
+  plot_i <- ggplot(object@meta.data[n2, ], aes(y = .data[[i]], x = tag, fill = tag)) +
     geom_boxplot(outlier.alpha = 0.2) +
-    labs(title = paste0("No_TCR_cells_", i), x = "Sample", y = print(i)) +
+    labs(title = paste0("No_TCR_cells_", i), x = "Sample", y = i) +
     theme_ic +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           legend.position = "none",
@@ -220,7 +219,7 @@ for (i in metrics) {
     plot_i <- plot_i +
       geom_hline(yintercept = 10, linetype = "dashed", color = "black", linewidth = 0.3)
   }
-    qc_no_tcr[[i]] <- plot_i
+  qc_no_tcr[[i]] <- plot_i
 }
 plots_list[["IC03_qc_tcr"]] <- wrap_plots(c(qc_tcr, qc_no_tcr), ncol = 4)
 print(plots_list$IC03_qc_tcr)
@@ -241,7 +240,7 @@ for (i in metrics) {
     for (k in thresholds) {
       percent_passing <- mean(tag_data[[i]] <= k)
       results <- rbind(results, data.frame(threshold = k, passing_cells = percent_passing, tag = j))
-      results$tag <- factor(results$tag, levels = c("post1_bulk", "post1_pd1", "post6_bulk", "post6_pd1"))
+      results$tag <- factor(results$tag, levels = c("pre_bulk1", "pre_bulk2", "pre_bulk3", "pre_pd1", "post2_bulk1", "post2_bulk2", "post2_bulk3", "post2_pd1"))
     }
   }
   plot_i <- ggplot(results, aes(x = threshold, y = passing_cells, color = tag, fill = tag)) +
@@ -293,11 +292,11 @@ mito_plots_filter <- ggplot(object@meta.data, aes(x = log(percent.mt), y = log(p
   theme(aspect.ratio = 1) +
   geom_vline(xintercept = c(log(10), log(15), log(20)), linewidth = 0.1, color = "black") +
   scale_color_manual(values = c(
-      "elim_mt" = "#FF5A1F",
-      "high_mt" = "#A100FF",
-      "int_mt" = "#00B8A9",
-      "low_mt" = "#355070"
-      )
+    "elim_mt" = "#FF5A1F",
+    "high_mt" = "#A100FF",
+    "int_mt" = "#00B8A9",
+    "low_mt" = "#355070"
+  )
   ) +
   scale_shape_manual(values = c("yes" = 21, "no" = 3)) +
   ggtitle("IC05")
@@ -322,7 +321,7 @@ keep_cells <- setdiff(all_cells, c(elim_cells_mt, elim_cells_tcr))
 object <- subset(object,
                  features = keep_genes,
                  cells = keep_cells
-                 )
+)
 rm(counts, expressed_genes, keep_genes, all_cells, elim_cells_mt, elim_cells_tcr, keep_cells)
 ```
 
@@ -342,7 +341,7 @@ for (i in metrics) {
     for (k in thresholds) {
       percent_passing <- mean(tag_data[[i]] <= k)
       results <- rbind(results, data.frame(threshold = k, passing_cells = percent_passing, tag = j))
-      results$tag <- factor(results$tag, levels = c("post1_bulk", "post1_pd1", "post6_bulk", "post6_pd1"))
+      results$tag <- factor(results$tag, levels = c("pre_bulk1", "pre_bulk2", "pre_bulk3", "pre_pd1", "post2_bulk1", "post2_bulk2", "post2_bulk3", "post2_pd1"))
     }
   }
   plot_i <- ggplot(results, aes(x = threshold, y = passing_cells, color = tag, fill = tag)) +
@@ -379,11 +378,11 @@ mito_plots_filter <- ggplot(object@meta.data, aes(x = log(percent.mt), y = log(p
   theme(aspect.ratio = 1) +
   geom_vline(xintercept = c(log(10), log(15), log(20)), linewidth = 0.1, color = "black") +
   scale_color_manual(values = c(
-      "elim_mt" = "#FF5A1F",
-      "high_mt" = "#A100FF",
-      "int_mt" = "#00B8A9",
-      "low_mt" = "#355070"
-      )
+    "elim_mt" = "#FF5A1F",
+    "high_mt" = "#A100FF",
+    "int_mt" = "#00B8A9",
+    "low_mt" = "#355070"
+  )
   ) +
   scale_shape_manual(values = c("yes" = 21, "no" = 3)) +
   ggtitle("IC05")
@@ -400,7 +399,7 @@ Automated annotation using scDblFinder:
 
 ```{r, warning=FALSE}
 set.seed(SEED)
-# --- Transform Seurat to SCE ---
+# --- Convert to SingleCellExperiment for scDblFinder ---
 sce_obj <- as.SingleCellExperiment(object, assay = "RNA")
 colData(sce_obj)$tag <- object$tag
 sce_obj <- scDblFinder(
@@ -409,7 +408,7 @@ sce_obj <- scDblFinder(
   clusters = FALSE,
   BPPARAM = BiocParallel::SerialParam(RNGseed = SEED)
 )
-# --- Return to Seurat ---
+# --- Copy doublet calls back to the Seurat object ---
 object$scDblFinder.score <- sce_obj$scDblFinder.score
 object$scDblFinder.class <- sce_obj$scDblFinder.class
 table(object$scDblFinder.class)
@@ -450,22 +449,22 @@ Important: Keep those clonotypes included in the TCR library.
 ```{r}
 tcr_lib_clonotypes <- readRDS(file.path(aux_dir, "tcr-library", "tcr_library_clonotypes_pre_post2.rds")) %>%
   as.data.frame() %>%
-  mutate(
-    across(c(v_gene, j_gene), ~ gsub("\\*[0-9]+", "", .))
-  ) %>%
-  distinct(cdr3, v_gene, j_gene, .keep_all = TRUE)
+  distinct(cdr3,
+           v_gene,
+           j_gene,
+           .keep_all = TRUE)
 tcr_lib_clonotypes$key <- paste(tcr_lib_clonotypes$cdr3, tcr_lib_clonotypes$v_gene, tcr_lib_clonotypes$j_gene, sep = "_")
 object@meta.data$key <- paste(object@meta.data$cdr3, object@meta.data$v_gene, object@meta.data$j_gene, sep = "_")
-match_idx <- match(object@meta.data$key, tcr_lib_clonotypes$key)
+match_idx <- match(object@meta.data$key,
+                   tcr_lib_clonotypes$key)
 object@meta.data$id <- tcr_lib_clonotypes$id[match_idx]
-object@meta.data$tag_combination_controls <- tcr_lib_clonotypes$tag_combination_controls[match_idx]
 object@meta.data$key <- NULL
 ```
 
 Doublet removal.
 
 ```{r}
-object <- subset(object, subset = scDblFinder.class != "doublet" | !is.na(id))
+object <- subset(object, subset = scDblFinder.class != "doublet" | !is.na(object$id))
 ```
 
 # SCTransform
@@ -491,33 +490,32 @@ IC07 - Quality control plots.
 features <- c("percent.mt", "percent.rpa", "logreads", "TRAV.avg", "TRAJ.avg", "TRBV.avg", "TRBJ.avg", "TRGV.avg", "TRDV.avg", "scDblFinder.score")
 g <- list()
 for (i in seq_along(features)) {
-  g[[i]] <- ggplotGrob(FeaturePlot(object_SCT, combine=TRUE, reduction="umap", features= features[i], keep.scale=NULL, min.cutoff=0,max.cutoff=70,
-                                 pt.size=0.1,label = TRUE, label.size =4,order=T) +
+  g[[i]] <- ggplotGrob(FeaturePlot(object_SCT, combine = TRUE, reduction = "umap", features = features[i], keep.scale = NULL, min.cutoff = 0, max.cutoff = 70,
+                                   pt.size = 0.1, label = TRUE, label.size = 4, order = T) +
                          scale_color_viridis_c(option = "H") +
                          theme_ic +
                          theme(aspect.ratio = 1) +
                          ggtitle(features[i])
-                       )
-  }
-plots_list[["IC07_qc_parameters"]] <- marrangeGrob(grobs= g, nrow=2, ncol=5)
+  )
+}
+plots_list[["IC07_qc_parameters"]] <- marrangeGrob(grobs = g, nrow = 2, ncol = 5)
 rm(features, g, i)
 ```
 
 IC08 - Quality control plots by cluster.
 
 ```{r, warning=FALSE}
-t <- data.frame(sample_type= object_SCT@meta.data$tag,
+t <- data.frame(sample_type = object_SCT@meta.data$tag,
                 logreads = object_SCT@meta.data$logreads,
                 percent.mt = object_SCT@meta.data$percent.mt,
                 RPA = object_SCT@meta.data$percent.rpa,
-                clusters= object_SCT@meta.data$seurat_clusters)
-
+                clusters = object_SCT@meta.data$seurat_clusters)
 g1 <- ggplot(t, aes(x = logreads, y = RPA)) +
-  geom_point(aes(color = percent.mt), alpha = 0.5,size = 0.8) +
+  geom_point(aes(color = percent.mt), alpha = 0.5, size = 0.8) +
   scale_color_viridis_c(option = "H") +
   geom_density_2d(aes(color = percent.mt), alpha = 0.8) +
-  facet_wrap(~ clusters) + geom_vline(xintercept = 8, lty=2) +
-  geom_hline(yintercept = 20, lty=2) +
+  facet_wrap(~ clusters) + geom_vline(xintercept = 8, lty = 2) +
+  geom_hline(yintercept = 20, lty = 2) +
   theme_ic +
   theme(aspect.ratio = 1)
 g2 <- DimPlot(object_SCT, group.by = "seurat_clusters", label = T) +
@@ -530,7 +528,7 @@ rm(g1, g2)
 # magic
 
 ```{r}
-# --- Perform MAGIC imputation and integrate imputed expression values ---
+# --- MAGIC imputation of selected genes, stored as <gene>_mag metadata columns ---
 genes_magic <- c(
   "CD4", "CD8A", "CD8B", "PDCD1", "ENTPD1", "CXCL13",
   "CD69", "TNFRSF9", "ICOS", "TNFRSF4",
@@ -590,8 +588,8 @@ ridge_plots <- list()
 for (i in markers) {
   x <- data.frame(marker_value = object_SCT@meta.data[[i]], sample_type = object_SCT@meta.data$tag)
   g <- ggplot(x, aes(x = marker_value, y = sample_type, fill = sample_type)) +
-    geom_density_ridges(aes(point_color = 1, point_fill = sample_type), 
-                        alpha = 0.75, 
+    geom_density_ridges(aes(point_color = 1, point_fill = sample_type),
+                        alpha = 0.75,
                         jittered_points = TRUE,
                         point_alpha = 0.1,
                         point_color = "black",
@@ -604,7 +602,7 @@ for (i in markers) {
   rm(x, g)
 }
 plots_list[["IC10_CD4_8_ridge"]] <- wrap_plots(ridge_plots, ncol = 3)
-rm(markers, ridge_plots, i, x, g)
+rm(markers, ridge_plots, i)
 ```
 
 IC11 - Correlation between CD4 vs. CD8A/B vs. PDCD1 expression per sample.
@@ -616,19 +614,14 @@ t <- mutate(t,
             CD4 = object_SCT@meta.data$CD4_mag,
             PD1 = object_SCT@meta.data$PDCD1_mag)
 density_plots <- list()
-# CD8AvsCD4
 g <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = CD8B), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = CD8B), alpha = 0.5) + facet_wrap(~ sample_type) + ggtitle("CD8AvsCD4") + theme_ic + theme(aspect.ratio = 1)
 density_plots[["CD8AvsCD4"]] <- g
-# CD8BvsCD4
 g <- ggplot(t, aes(x = CD8B, y = CD4)) + geom_point(aes(color = CD8A), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = CD8A), alpha = 0.5) + facet_wrap(~ sample_type) + ggtitle("CD8BvsCD4") + theme_ic + theme(aspect.ratio = 1)
 density_plots[["CD8BvsCD4"]] <- g
-# CD8BvsCD8A_CD4
 g <- ggplot(t, aes(x = CD8B, y = CD8A)) + geom_point(aes(color = CD4), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = CD4), alpha = 0.5) + facet_wrap(~ sample_type) + ggtitle("CD8BvsCD8A_CD4") + theme_ic + theme(aspect.ratio = 1)
 density_plots[["CD8BvsCD8A_CD4"]] <- g
-# CD8BvsCD8A_PD1
 g <- ggplot(t, aes(x = CD8B, y = CD8A)) + geom_point(aes(color = PD1), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = PD1), alpha = 0.5) + facet_wrap(~ sample_type) + ggtitle("CD8BvsCD8A_PD1") + theme_ic + theme(aspect.ratio = 1)
 density_plots[["CD8BvsCD8A_PD1"]] <- g
-# CD8AvsCD4_PD1
 g <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = PD1), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = PD1), alpha = 0.5) + facet_wrap(~ sample_type) + ggtitle("CD8AvsCD4_PD1") + theme_ic + theme(aspect.ratio = 1)
 density_plots[["CD8AvsCD4_PD1"]] <- g
 plots_list[["IC11_CD4_8_dotplot"]] <- wrap_plots(density_plots, nrow = 2, ncol = 3)
@@ -712,8 +705,8 @@ rm(sc, pd, cl, dens, x, x_sorted)
 IC12 - Evaluate the consistency of the pdfCluster thresholds for the separation of CD4+ cells from CD8+ T cells.
 
 ```{r, warning=FALSE}
-g1 <- ggplot(t, aes(x = CD8B, y = CD4)) + geom_point(aes(color = CD8A), alpha = 0.5,size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(group = clusters, color = CD8A), alpha = 0.8) + facet_wrap(~clusters) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic + theme(aspect.ratio = 1)
-g2 <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = CD8B), alpha = 0.5,size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(group = clusters, color = CD8B), alpha = 0.8) + facet_wrap(~clusters) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic +theme(aspect.ratio = 1)
+g1 <- ggplot(t, aes(x = CD8B, y = CD4)) + geom_point(aes(color = CD8A), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(group = clusters, color = CD8A), alpha = 0.8) + facet_wrap(~clusters) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic + theme(aspect.ratio = 1)
+g2 <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = CD8B), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(group = clusters, color = CD8B), alpha = 0.8) + facet_wrap(~clusters) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic + theme(aspect.ratio = 1)
 plots_list[["IC12_pdfCluster_thresholds"]] <- wrap_plots(g1, g2, ncol = 2)
 rm(g1, g2)
 ```
@@ -721,20 +714,20 @@ rm(g1, g2)
 Table of summary results.
 
 ```{r}
-props <- do.call(rbind,lapply(levels(object_SCT@meta.data$seurat_clusters), function(k){
-    y <- t[t$clusters==k,]
-    CD8 <- sum(y$CD8A>thresholdCD8 & y$CD4<thresholdCD4 & !(y$logreads<8 & y$RPA<20 & y$percent.mt > 15))
-    CD4 <- sum(y$CD8A<thresholdCD8 & y$CD4>thresholdCD4 & !(y$logreads<8 & y$RPA<20 & y$percent.mt > 15))
-    others <- nrow(y)-CD8-CD4
-    c(CD8,CD4,others)
+props <- do.call(rbind, lapply(levels(object_SCT@meta.data$seurat_clusters), function(k) {
+  y <- t[t$clusters == k, ]
+  CD8 <- sum(y$CD8A > thresholdCD8 & y$CD4 < thresholdCD4 & !(y$logreads < 8 & y$RPA < 20 & y$percent.mt > 15))
+  CD4 <- sum(y$CD8A < thresholdCD8 & y$CD4 > thresholdCD4 & !(y$logreads < 8 & y$RPA < 20 & y$percent.mt > 15))
+  others <- nrow(y) - CD8 - CD4
+  c(CD8, CD4, others)
 }))
-colnames(props) <-  c("CD8","CD4","others")
-df <- data.frame(clusters =levels(object_SCT@meta.data$seurat_clusters), props)
+colnames(props) <- c("CD8", "CD4", "others")
+df <- data.frame(clusters = levels(object_SCT@meta.data$seurat_clusters), props)
 df$byclust <- "none"
-df[df[,2]/apply(df[,-c(1,5)],1,sum)>0.6,"byclust"] <- "CD8"
-df[df[,3]/apply(df[,-c(1,5)],1,sum)>0.6,"byclust"] <- "CD4"
-df$diffCD4CD8 <- apply(df[,c(2,3)],1,min)/apply(df[,c(2,3)],1,max)*100
-df$diffMaxOthers <- df[,c(4)]/apply(df[,c(2,3)],1,max)*100
+df[df[, 2] / apply(df[, -c(1, 5)], 1, sum) > 0.6, "byclust"] <- "CD8"
+df[df[, 3] / apply(df[, -c(1, 5)], 1, sum) > 0.6, "byclust"] <- "CD4"
+df$diffCD4CD8 <- apply(df[, c(2, 3)], 1, min) / apply(df[, c(2, 3)], 1, max) * 100
+df$diffMaxOthers <- df[, c(4)] / apply(df[, c(2, 3)], 1, max) * 100
 rt1 <- df
 rm(props, df)
 ```
@@ -744,54 +737,54 @@ ind.method.
 ```{r}
 # --- CD8+ cells ---
 object_SCT$CD8ind <- rep(FALSE, length(colnames(object_SCT)))
-object_SCT$CD8ind[object_SCT$CD8A_mag>thresholdCD8 & object_SCT$CD4_mag<thresholdCD4 & !(object_SCT$logreads<8 & object_SCT$percent.rpa<20 & object_SCT$percent.mt > 15)] <- TRUE
+object_SCT$CD8ind[object_SCT$CD8A_mag > thresholdCD8 & object_SCT$CD4_mag < thresholdCD4 & !(object_SCT$logreads < 8 & object_SCT$percent.rpa < 20 & object_SCT$percent.mt > 15)] <- TRUE
 # --- CD4+ cells ---
 object_SCT$CD4ind <- rep(FALSE, length(colnames(object_SCT)))
-object_SCT$CD4ind[object_SCT$CD8A_mag<thresholdCD8 & object_SCT$CD4_mag>thresholdCD4 & !(object_SCT$logreads<8 & object_SCT$percent.rpa<20 & object_SCT$percent.mt > 15)] <- TRUE
+object_SCT$CD4ind[object_SCT$CD8A_mag < thresholdCD8 & object_SCT$CD4_mag > thresholdCD4 & !(object_SCT$logreads < 8 & object_SCT$percent.rpa < 20 & object_SCT$percent.mt > 15)] <- TRUE
 ```
 
 clust.method.
 
 ```{r}
-# CD8+ cells.
-cd8clusts <- rt1$clusters[which(rt1$byclust=="CD8")]
+# --- CD8+ cells ---
+cd8clusts <- rt1$clusters[which(rt1$byclust == "CD8")]
 object_SCT$CD8indbyclust <- rep(FALSE, length(colnames(object_SCT)))
-object_SCT$CD8indbyclust[object_SCT$seurat_clusters %in% cd8clusts & !(object_SCT$logreads<8 & object_SCT$percent.rpa<20 & object_SCT$percent.mt > 15)] <- TRUE
-# CD4+ cells.
-cd4clusts <- rt1$clusters[which(rt1$byclust=="CD4")]
+object_SCT$CD8indbyclust[object_SCT$seurat_clusters %in% cd8clusts & !(object_SCT$logreads < 8 & object_SCT$percent.rpa < 20 & object_SCT$percent.mt > 15)] <- TRUE
+# --- CD4+ cells ---
+cd4clusts <- rt1$clusters[which(rt1$byclust == "CD4")]
 object_SCT$CD4indbyclust <- rep(FALSE, length(colnames(object_SCT)))
-object_SCT$CD4indbyclust[object_SCT$seurat_clusters %in% cd4clusts & !(object_SCT$logreads<8 & object_SCT$percent.rpa<20 & object_SCT$percent.mt > 15)] <- TRUE
+object_SCT$CD4indbyclust[object_SCT$seurat_clusters %in% cd4clusts & !(object_SCT$logreads < 8 & object_SCT$percent.rpa < 20 & object_SCT$percent.mt > 15)] <- TRUE
 rm(cd8clusts, cd4clusts)
 ```
 
 Rescue not clear clusters.
 
 ```{r}
-# CD8+ cells.
-extraCD8 <-  rt1$clusters[which(rt1$byclust == "none")] 
+# --- CD8+ cells ---
+extraCD8 <- rt1$clusters[which(rt1$byclust == "none")]
 object_SCT$CD8indbyclust[object_SCT$seurat_clusters %in% extraCD8 &
-                             object_SCT$CD8A_mag>thresholdCD8 & object_SCT$CD4_mag<thresholdCD4 & !(object_SCT$logreads<8 & object_SCT$percent.rpa<20 & object_SCT$percent.mt > 15)] <- TRUE
-# CD4+ cells.
-extraCD4 <-  rt1$clusters[which(rt1$byclust == "none")]
+  object_SCT$CD8A_mag > thresholdCD8 & object_SCT$CD4_mag < thresholdCD4 & !(object_SCT$logreads < 8 & object_SCT$percent.rpa < 20 & object_SCT$percent.mt > 15)] <- TRUE
+# --- CD4+ cells ---
+extraCD4 <- rt1$clusters[which(rt1$byclust == "none")]
 object_SCT$CD4indbyclust[object_SCT$seurat_clusters %in% extraCD4 &
-                             object_SCT$CD8A_mag<thresholdCD8 & object_SCT$CD4_mag>thresholdCD4 & !(object_SCT$logreads<8 & object_SCT$percent.rpa<20 & object_SCT$percent.mt > 15)] <- TRUE
+  object_SCT$CD8A_mag < thresholdCD8 & object_SCT$CD4_mag > thresholdCD4 & !(object_SCT$logreads < 8 & object_SCT$percent.rpa < 20 & object_SCT$percent.mt > 15)] <- TRUE
 ```
 
 Designate CD4+ or CD8+ T cell in the Seurat object.
 
 ```{r}
-rt2 <- data.frame(class= c("CD4","CD8","none"),
-           ind.method = c(sum(object_SCT$CD4ind), sum(object_SCT$CD8ind), sum(!object_SCT$CD8ind & !object_SCT$CD4ind)),
-           clust.method = c(sum(object_SCT$CD4indbyclust),sum(object_SCT$CD8indbyclust), sum(!object_SCT$CD8indbyclust & !object_SCT$CD4indbyclust))
-           )
+rt2 <- data.frame(class = c("CD4", "CD8", "none"),
+                  ind.method = c(sum(object_SCT$CD4ind), sum(object_SCT$CD8ind), sum(!object_SCT$CD8ind & !object_SCT$CD4ind)),
+                  clust.method = c(sum(object_SCT$CD4indbyclust), sum(object_SCT$CD8indbyclust), sum(!object_SCT$CD8indbyclust & !object_SCT$CD4indbyclust))
+)
 object_SCT$ind.method <- ifelse(object_SCT$CD8ind == TRUE & object_SCT$CD4ind == FALSE, "cd8",
-                                  ifelse(object_SCT$CD8ind == FALSE & object_SCT$CD4ind == TRUE, "cd4",
-                                         "unknown"))
+                                ifelse(object_SCT$CD8ind == FALSE & object_SCT$CD4ind == TRUE, "cd4",
+                                       "unknown"))
 object_SCT$clust.method <- ifelse(object_SCT$CD8indbyclust == TRUE & object_SCT$CD4indbyclust == FALSE, "cd8",
-                                    ifelse(object_SCT$CD8indbyclust == FALSE & object_SCT$CD4indbyclust == TRUE, "cd4",
-                                           "unknown"))
-write.csv(rt1, file.path(batch_dir, "seurat/rt1_vhio.csv"))
-write.csv(rt2, file.path(batch_dir, "seurat/rt2_vhio.csv"))
+                                  ifelse(object_SCT$CD8indbyclust == FALSE & object_SCT$CD4indbyclust == TRUE, "cd4",
+                                         "unknown"))
+write.csv(rt1, file.path(batch_dir, "seurat/rt1_rootpath.csv"))
+write.csv(rt2, file.path(batch_dir, "seurat/rt2_rootpath.csv"))
 object_SCT$CD8ind <- NULL
 object_SCT$CD4ind <- NULL
 object_SCT$CD8indbyclust <- NULL
@@ -805,11 +798,10 @@ IC13 - UMAP plot of CD4+ cells from CD8+ T cells.
 t <- mutate(t,
             ind.method = object_SCT@meta.data$ind.method,
             clust.method = object_SCT@meta.data$clust.method)
-g1 <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = PD1), alpha = 0.5,size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = PD1), alpha = 0.8) + facet_wrap(~ind.method) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic + theme(aspect.ratio = 1)
+g1 <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = PD1), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = PD1), alpha = 0.8) + facet_wrap(~ind.method) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic + theme(aspect.ratio = 1)
 g2 <- DimPlot(object_SCT, reduction = "umap", group.by = "enrichment", split.by = "ind.method") + theme(aspect.ratio = 1)
 plots_list[["IC13_CD4_8_ind.method"]] <- wrap_plots(g2, g1, nrow = 2)
-
-g3 <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = PD1), alpha = 0.5,size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = PD1), alpha = 0.8) + facet_wrap(~clust.method) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic + theme(aspect.ratio = 1)
+g3 <- ggplot(t, aes(x = CD8A, y = CD4)) + geom_point(aes(color = PD1), alpha = 0.5, size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = PD1), alpha = 0.8) + facet_wrap(~clust.method) + geom_vline(xintercept = thresholdCD8) + geom_hline(yintercept = thresholdCD4) + theme_ic + theme(aspect.ratio = 1)
 g4 <- DimPlot(object_SCT, reduction = "umap", group.by = "enrichment", split.by = "clust.method") + theme(aspect.ratio = 1)
 plots_list[["IC13_CD4_8_clust.method"]] <- wrap_plots(g4, g3, nrow = 2)
 rm(t, g1, g2, thresholdCD4, thresholdCD8)
@@ -820,9 +812,10 @@ rm(t, g1, g2, thresholdCD4, thresholdCD8)
 scGate: <https://github.com/carmonalab/scGate>
 
 ```{r, warning=FALSE}
-scGate_models_DB <- get_scGateDB(version = "v0.17")  # pinned: identical to master as of 2026-10
+# --- Pinned scGate DB version (identical to master as of 2026-10) ---
+scGate_models_DB <- get_scGateDB(version = "v0.17")
 models.pbmc <- scGate_models_DB$human$PBMC
-object_SCT <- scGate(object_SCT, assay = "SCT", model = models.pbmc)
+object_SCT <- scGate(object_SCT, assay = "SCT", model = models.pbmc, return.CellOntology = FALSE)
 object_SCT$scGate_multi <- ifelse(is.na(object_SCT$scGate_multi), "unknown", object_SCT$scGate_multi)
 rm(scGate_models_DB, models.pbmc)
 ```
@@ -830,7 +823,7 @@ rm(scGate_models_DB, models.pbmc)
 IC14 - Evaluate the consistency of pdfClusters with scGate for annotation of CD4+ cells and CD8+ T cells.
 
 ```{r}
-# ind.method seems more correct than clust.method, which leads to more inconsistencies between the two methods. Therefore, use ind.method in downstream analyses.
+# --- ind.method is used downstream: clust.method gives more inconsistencies with scGate ---
 table(object_SCT$ind.method, object_SCT$scGate_multi)
 table(object_SCT$clust.method, object_SCT$scGate_multi)
 g1 <- DimPlot(object_SCT, group.by = "scGate_multi", split.by = "ind.method") + theme_ic + theme(aspect.ratio = 1) + ggtitle("ind.method_vs_scGate")
@@ -852,7 +845,7 @@ Rescue CD4/CD8 T-cell identities for T cells harboring the tested TCRs in the li
 
 ```{r}
 object_SCT_sub <- object_SCT@meta.data %>%
-  filter(celltype == "unknown" & !is.na(tag_combination_controls)) %>%
+  filter(celltype == "unknown" & !is.na(id)) %>%
   mutate(
     celltype = case_when(
       (CD4_mag >= 0.25 & CD8A_mag <= 0.5) | grepl("CD4T", scGate_multi) ~ "cd4",
@@ -860,9 +853,9 @@ object_SCT_sub <- object_SCT@meta.data %>%
       TRUE ~ "unknown"
     )
   )
-# No manual correction needed.
-
-
+# --- Manual correction: two TCR-library cells set to CD8 ---
+cells_to_fix <- c("post2_bulk2_AAACCTGAGGTGACCA-1", "post2_bulk3_TGCGTGGGTCACTTCC-1")
+object_SCT_sub[cells_to_fix, "celltype"] <- "cd8"
 object_SCT_sub <- object_SCT_sub %>% select(celltype)
 matching_cells <- intersect(rownames(object_SCT@meta.data), rownames(object_SCT_sub))
 object_SCT@meta.data[matching_cells, "celltype"] <- object_SCT_sub[matching_cells, "celltype"]
@@ -876,16 +869,18 @@ ids_unique <- unique(unlist(strsplit(na.omit(object_SCT$id), ";", fixed = TRUE))
 length(ids_unique)
 ```
 
+"ID.636" is not represented in the single-cell repertoire, probably it was reconstructed because its CDR3B was frequent and was paired with some CDR3A from the single-cell but doesn't represent a cell.
+
 # checkpoint.
 
 ```{r}
-saveRDS(object_SCT, file.path(batch_dir, "seurat/SCT_vhio.rds"))
+saveRDS(object_SCT, file.path(batch_dir, "seurat/SCT_rootpath.rds"))
 ```
 
 Save plots.
 
 ```{r, warning=FALSE}
-plot_dir <- file.path(batch_dir, "plots")
+plot_dir <- file.path(batch_dir, "plots-qc")
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 for (i in names(plots_list)) {
   pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)

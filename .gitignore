@@ -2,17 +2,24 @@
 /*
 !/.gitignore
 !/README.md
+!/LICENSE
 
 # Analysis code
 !/scripts/
+# Exploratory analyses (not part of the published workflow)
+/scripts/single-cell/rmd-exploratory/
+/scripts/exploratory/
 !/setup/
 /setup/refs/
+# Cell Ranger containers (rebuilt from Docker Hub by digest, see README; not redistributable)
+*.sif
 
-# Input data: only the auxiliary tables in data/aux (Cell Ranger outputs and bulk repertoires are not tracked)
+# Input data: only the auxiliary tables in data/aux and the flow exports (Cell Ranger outputs and bulk repertoires are not tracked)
 !/data/
 /data/*
 !/data/aux/
-/data/aux/bulk-repertoire/
+!/data/flow-phenotype/
+/data/aux/tcr-library/bowtie2_indices/
 
 # renv: lockfile + bootstrap files (library is restored with renv::restore())
 !/renv-vhio136/
@@ -25,8 +32,6 @@
 !/renv-vhio136/renv/settings.json
 !/renv-vhio136/renv/.gitignore
 
-# conda/python environment exports
-!/renv-vhio136/env-lock/
 
 .Rhistory
 .RData

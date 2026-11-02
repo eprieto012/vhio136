@@ -1,5 +1,5 @@
 ---
-title: "m01_data_load_yossef_latest"
+title: "m01-data-load-yossef"
 author: "Endika Prieto <endikaprieto@vhio.net>"
 date: "2026-01-08"
 output: html_document
@@ -10,6 +10,7 @@ output: html_document
 ```{r setup, message=FALSE, warning=FALSE}
 setup_dir <- normalizePath("../setup", mustWork = TRUE)
 source(file.path(setup_dir, "setup.R"))
+source(file.path(setup_dir, "functions-yossef.R"))
 plots_list <- list()
 sample <- "yossef-cohort"
 batch_dir <- file.path(datapath, sample)
@@ -25,7 +26,7 @@ Public data from Yossef et al. Estimation of ambient RNA contamination using Sou
 SoupX is used as a QC step only: the contamination fraction (rho) is estimated per sample, but counts are not corrected (no adjustCounts()), so the downstream object is built from the uncorrected matrix. autoEstCont() relies on cluster-specific genes, which are scarce in sorted T cells, so the estimate is fragile; forceAccept = TRUE only prevents the run from stopping when an implausible value is estimated. Estimated rho = 0.01-0.03 in all samples except RY4422-CD8-2 (0.65), which SoupX itself flags as a failure of the estimation rather than real contamination.
 
 ```{r, message=FALSE, warning=FALSE}
-folder_data <- sample
+folder_data <- file.path("single-cell", sample)
 object_files <- list.files(file.path(datapath_load, folder_data))
 object_tags <- c("3791", "4180", "4180", "4246", "4287", "4317", "4324", "4324", "4359", "4359", "4422", "4422")
 object_YR <- list()
@@ -51,9 +52,9 @@ for (i in seq_along(object_files)) {
   sc <- setClusters(sc, setNames(meta$seurat_clusters, rownames(meta)))
   sc <- setDR(sc, umap)
   set.seed(SEED)
-  sc  <- autoEstCont(sc, forceAccept = TRUE)
+  sc <- autoEstCont(sc, forceAccept = TRUE)
   soupX_YR[[as.character(object_files[i])]] <- sc
-  rm(toc, toc_seurat, tod, sc, meta, umap, soup, i)
+  rm(toc, toc_seurat, tod, sc, meta, umap, i)
 }
 dir.create(file.path(batch_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
 saveRDS(soupX_YR, file.path(batch_dir, "seurat", "soupX_yossef.rds"))
@@ -69,7 +70,7 @@ for (i in names(soupX_YR)) {
   data_i$gene <- as.character(row.names(data_i))
   data_i$gene <- factor(data_i$gene, levels = data_i$gene)
   data_i$source <- ifelse(grepl("^MT-", data_i$gene), "mito",
-                  ifelse(grepl("^RPS|^RPL", data_i$gene), "ribo", "other"))
+                          ifelse(grepl("^RPS|^RPL", data_i$gene), "ribo", "other"))
   plot_i <- ggplot(data_i, aes(x = gene, y = est, fill = source)) +
     geom_bar(stat = "identity") +
     ylim(0, 0.13) +
@@ -111,7 +112,7 @@ Load VDJ data with djvdj:
 vdj_files <- list.files(file.path(datapath_load, folder_data))
 vdj_dirs <- paste0(file.path(datapath_load, folder_data), "/", vdj_files)
 vdj_dirs <- setNames(vdj_dirs, vdj_files)
-for (i in seq_along(vdj_dirs)){
+for (i in seq_along(vdj_dirs)) {
   so <- object_YR[[i]]
   so <- import_vdj(so, vdj_dir = vdj_dirs[[i]])
   object_YR[[i]] <- so
@@ -150,20 +151,19 @@ gc()
 # qc
 
 ```{r, warning=FALSE}
-#logreads.
 object$logreads <- log(colSums(object$RNA))
-# Mitochondrial and ribosomal genes.
+# --- Mitochondrial and ribosomal content ---
 object <- PercentageFeatureSet(object, pattern = "^MT-", col.name = "percent.mt")
-object <- PercentageFeatureSet(object, pattern="^RPL", col.name = "percent.rpl")
-object <- PercentageFeatureSet(object, pattern="^RPS", col.name = "percent.rps")
-object <- PercentageFeatureSet(object, pattern="^RPS|^RPL", col.name = "percent.rpa")
-# TCR genes.
-object <- PercentageFeatureSet(object, pattern="^TRAV", col.name = "TRAV.avg")
-object <- PercentageFeatureSet(object, pattern="^TRAJ", col.name = "TRAJ.avg")
-object <- PercentageFeatureSet(object, pattern="^TRBV", col.name = "TRBV.avg")
-object <- PercentageFeatureSet(object, pattern="^TRBJ", col.name = "TRBJ.avg")
-object <- PercentageFeatureSet(object, pattern="^TRGV", col.name = "TRGV.avg")
-object <- PercentageFeatureSet(object, pattern="^TRDV", col.name = "TRDV.avg")
+object <- PercentageFeatureSet(object, pattern = "^RPL", col.name = "percent.rpl")
+object <- PercentageFeatureSet(object, pattern = "^RPS", col.name = "percent.rps")
+object <- PercentageFeatureSet(object, pattern = "^RPS|^RPL", col.name = "percent.rpa")
+# --- TCR gene content ---
+object <- PercentageFeatureSet(object, pattern = "^TRAV", col.name = "TRAV.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRAJ", col.name = "TRAJ.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRBV", col.name = "TRBV.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRBJ", col.name = "TRBJ.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRGV", col.name = "TRGV.avg")
+object <- PercentageFeatureSet(object, pattern = "^TRDV", col.name = "TRDV.avg")
 ```
 
 IC03 - Quality of cells without TCR info.
@@ -180,9 +180,9 @@ metrics <- c("percent.mt", "percent.rpa", "TRAV.avg", "TRBV.avg")
 # --- TCR cells ---
 qc_tcr <- list()
 for (i in metrics) {
-  plot_i <- ggplot(object@meta.data[n1,], aes(y = .data[[i]], x = tag, fill = tag)) +
+  plot_i <- ggplot(object@meta.data[n1, ], aes(y = .data[[i]], x = tag, fill = tag)) +
     geom_boxplot(outlier.alpha = 0.2) +
-    labs(title = paste0("TCR_cells_", i), x = "Sample", y = print(i)) +
+    labs(title = paste0("TCR_cells_", i), x = "Sample", y = i) +
     theme_linedraw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           legend.position = "none",
@@ -194,14 +194,14 @@ for (i in metrics) {
     plot_i <- plot_i +
       geom_hline(yintercept = 10, linetype = "dashed", color = "black", linewidth = 0.3)
   }
-    qc_tcr[[i]] <- plot_i
+  qc_tcr[[i]] <- plot_i
 }
 # --- No TCR cells ---
 qc_no_tcr <- list()
 for (i in metrics) {
-  plot_i <- ggplot(object@meta.data[n2,], aes(y = .data[[i]], x = tag, fill = tag)) +
+  plot_i <- ggplot(object@meta.data[n2, ], aes(y = .data[[i]], x = tag, fill = tag)) +
     geom_boxplot(outlier.alpha = 0.2) +
-    labs(title = paste0("No_TCR_cells_", i), x = "Sample", y = print(i)) +
+    labs(title = paste0("No_TCR_cells_", i), x = "Sample", y = i) +
     theme_linedraw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           legend.position = "none",
@@ -213,7 +213,7 @@ for (i in metrics) {
     plot_i <- plot_i +
       geom_hline(yintercept = 10, linetype = "dashed", color = "black", linewidth = 0.3)
   }
-    qc_no_tcr[[i]] <- plot_i
+  qc_no_tcr[[i]] <- plot_i
 }
 plots_list[["IC03_qc_tcr"]] <- wrap_plots(c(qc_tcr, qc_no_tcr), ncol = 4)
 print(plots_list$IC03_qc_tcr)
@@ -261,7 +261,7 @@ rm(metadata, metrics, qc_curves, i, j, k, thresholds, results, tag_data, percent
 
 Tag cells between 10-20% percent.mt to check where they fall in the umap.
 
-Eliminating the 10-20% will affect the samples from batch1 (rootpath) more than those from batch2 (vhio). First, the 20% will be considered and where they fall will be evaluated.
+First, the 20% cutoff will be considered and where these cells fall will be evaluated.
 
 ```{r}
 object$tag.mt <- ifelse(object$percent.mt > 20, "elim_mt", NA)
@@ -285,11 +285,11 @@ mito_plots_filter <- ggplot(object@meta.data, aes(x = log(percent.mt), y = log(p
   theme(aspect.ratio = 1) +
   geom_vline(xintercept = c(log(10), log(15), log(20)), linewidth = 0.1, color = "black") +
   scale_color_manual(values = c(
-      "elim_mt" = "red3",
-      "high_mt" = "orange2",
-      "int_mt" = "green4",
-      "low_mt" = "gray20"
-      )
+    "elim_mt" = "red3",
+    "high_mt" = "orange2",
+    "int_mt" = "green4",
+    "low_mt" = "gray20"
+  )
   ) +
   scale_shape_manual(values = c("yes" = 21, "no" = 3)) +
   ggtitle("IC05")
@@ -314,7 +314,7 @@ keep_cells <- setdiff(all_cells, c(elim_cells_mt, elim_cells_tcr))
 object <- subset(object,
                  features = keep_genes,
                  cells = keep_cells
-                 )
+)
 rm(counts, expressed_genes, keep_genes, all_cells, elim_cells_mt, elim_cells_tcr, keep_cells)
 ```
 
@@ -326,7 +326,7 @@ Automated annotation using scDblFinder:
 
 ```{r, warning=FALSE}
 set.seed(SEED)
-# --- Transform Seurat to SCE ---
+# --- Convert to SingleCellExperiment for scDblFinder ---
 sce_obj <- as.SingleCellExperiment(object, assay = "RNA")
 colData(sce_obj)$tag <- object$tag
 sce_obj <- scDblFinder(
@@ -335,24 +335,23 @@ sce_obj <- scDblFinder(
   clusters = FALSE,
   BPPARAM = BiocParallel::SerialParam(RNGseed = SEED)
 )
-# --- Return to Seurat ---
+# --- Copy doublet calls back to the Seurat object ---
 object$scDblFinder.score <- sce_obj$scDblFinder.score
 object$scDblFinder.class <- sce_obj$scDblFinder.class
 table(object$scDblFinder.class)
 rm(sce_obj)
 ```
 
-Doublet removal. Doublets with a reactive TCR (same patient + cdr3 match as in the reactivity annotation below) are kept.
+Doublet removal. Doublets with a reactive TCR (same patient + reactive TRA and TRB, as in the reactivity annotation below) are kept.
 
 ```{r}
 tcr_reactivity <- fread(file.path(aux_dir, "yossef-cohort", "yossef_reactive_tcrs.tsv")) %>% as.data.frame()
-reactive_keys <- paste(tcr_reactivity$patient, paste0(tcr_reactivity$TCRa, ";", tcr_reactivity$TCRb))
-is_reactive <- paste(sub("_.*", "", object$tag), object$cdr3) %in% reactive_keys
+is_reactive <- !is.na(match_reactive_tcr_yossef(sub("_.*", "", object$tag), object$chains, object$cdr3, tcr_reactivity))
 table(doublet = object$scDblFinder.class, reactive = is_reactive)
 keep_cells <- colnames(object)[object$scDblFinder.class != "doublet" | is_reactive]
 object <- subset(object, cells = keep_cells)
 table(object$scDblFinder.class)
-rm(tcr_reactivity, reactive_keys, is_reactive, keep_cells)
+rm(tcr_reactivity, is_reactive, keep_cells)
 ```
 
 # tags
@@ -364,9 +363,9 @@ chains_data <- object@meta.data %>%
   select(chains, cdr3, v_gene, j_gene) %>%
   mutate(
     chain_split = strsplit(as.character(chains), ";"),
-    cdr3_split  = strsplit(as.character(cdr3), ";"),
-    v_split     = strsplit(as.character(v_gene), ";"),
-    j_split     = strsplit(as.character(j_gene), ";")
+    cdr3_split = strsplit(as.character(cdr3), ";"),
+    v_split = strsplit(as.character(v_gene), ";"),
+    j_split = strsplit(as.character(j_gene), ";")
   ) %>%
   rowwise() %>%
   mutate(
@@ -383,13 +382,13 @@ chains_data <- object@meta.data %>%
             cdr3_split[tra_idx],
             clean_v,
             clean_j
-            ),
+          ),
           collapse = ";"
-          )
-        } else {
-          NA_character_
-        }
-      },
+        )
+      } else {
+        NA_character_
+      }
+    },
     TCRb = {
       trb_idx <- which(chain_split == "TRB")
       if (length(trb_idx) > 0) {
@@ -421,21 +420,28 @@ object@meta.data$cell_id <- row.names(object@meta.data)
 rm(chains_data)
 ```
 
-Reactive T cells by Yossef et al.
+Reactive T cells by Yossef et al. A cell is reactive when it carries both the reactive TRA and TRB CDR3 of a TCR reported for its patient; extra chains (e.g. a second TRA) are allowed. Cells with only one of the two chains stay as "Other". `clonotype` is the reactive TCR (TRA;TRB) for reactive cells and `cdr3` otherwise, so that cells of one reactive clone with an extra chain count as a single clonotype in m05.
 
 ```{r}
 tcr_reactivity <- fread(file.path(aux_dir, "yossef-cohort", "yossef_reactive_tcrs.tsv")) %>% as.data.frame()
-tcr_reactivity$cdr3 <- paste0(tcr_reactivity$TCRa, ";", tcr_reactivity$TCRb)
-tcr_reactivity$reactive <- "yes"
 meta <- object@meta.data
 meta$patient <- sub("_.*", "", meta$tag)
-meta <- meta %>% left_join(tcr_reactivity %>% select(patient, cdr3, Mutation, reactive),
-                           by = c("patient", "cdr3")
-                           )
+reactive_idx <- match_reactive_tcr_yossef(meta$patient, meta$chains, meta$cdr3, tcr_reactivity)
+meta$Mutation <- tcr_reactivity$Mutation[reactive_idx]
+meta$reactive <- ifelse(is.na(reactive_idx), NA_character_, "yes")
+meta$clonotype <- ifelse(
+  is.na(reactive_idx),
+  meta$cdr3,
+  paste0(tcr_reactivity$TCRa[reactive_idx], ";", tcr_reactivity$TCRb[reactive_idx])
+)
 object@meta.data <- meta
 rownames(object@meta.data) <- object@meta.data$cell_id
-# --- Category: Reactive vs Other ---
-# yossef_reactivity.tsv only lists reactive TCRs, so the rest (tested-negative, untested, no paired TCR) cannot be told apart
+# --- Reactive TCRs without any matching cell ---
+unmatched <- setdiff(seq_len(nrow(tcr_reactivity)), reactive_idx)
+print(tcr_reactivity[unmatched, c("patient", "TCRa", "TCRb")])
+table(patient = meta$patient, reactive = !is.na(reactive_idx))
+rm(tcr_reactivity, reactive_idx, unmatched, meta)
+# --- Category: Reactive vs Other (the table lists only reactive TCRs; the rest cannot be split) ---
 object$category <- ifelse(
   !is.na(object$reactive) & object$reactive == "yes",
   "Reactive",
@@ -454,9 +460,10 @@ ProjecTILs: <https://github.com/carmonalab/ProjecTILs>
 
 ```{r, warning=FALSE}
 object <- NormalizeData(object, assay = "RNA", verbose = FALSE)
-scGate_models_DB <- get_scGateDB(version = "v0.17")  # pinned: identical to master as of 2026-10
+# --- Pinned scGate DB version (identical to master as of 2026-10) ---
+scGate_models_DB <- get_scGateDB(version = "v0.17")
 models.pbmc <- scGate_models_DB$human$PBMC
-object <- scGate(object, assay = "RNA", model = models.pbmc)
+object <- scGate(object, assay = "RNA", model = models.pbmc, return.CellOntology = FALSE)
 object$scGate_multi <- ifelse(is.na(object$scGate_multi), "unknown", object$scGate_multi)
 object$celltype <- dplyr::case_when(
   object$scGate_multi == "CD8T" ~ "cd8",
@@ -487,7 +494,7 @@ saveRDS(object, file.path(batch_dir, "seurat", "int_filt_annot.rds"))
 Save plots.
 
 ```{r, warning=FALSE}
-plot_dir <- file.path(batch_dir, "plots")
+plot_dir <- file.path(batch_dir, "plots-qc")
 dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
 for (i in names(plots_list)) {
   pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)

@@ -1,0 +1,164 @@
+---
+title: "script-hit-identification-TCL"
+author: "Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-10-29"
+output: html_document
+---
+
+# setup
+
+Differential abundance of the TCR library constructs between 4-1BB+ (reactive) and 4-1BB- (non-reactive)
+sorted fractions, from the counts produced by `scripts/tcr-library/hits/run-hits.sh`.
+
+`setup/setup.R` is not sourced here: it configures the Python/MAGIC environment needed by the single-cell
+scripts only. Paths are defined the same way.
+
+```{r setup, message=FALSE, warning=FALSE}
+suppressPackageStartupMessages({
+  library(data.table)
+  library(dplyr)
+  library(ggplot2)
+  library(patchwork)
+  library(edgeR)
+})
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
+aux_dir <- file.path(project_dir, "data", "aux", "tcr-library")
+results_dir <- file.path(project_dir, "results", "tcr-library")
+# --- Counts in results/tcr-library/<screen>/<sample>/ unless TCRLIB_COUNTS_DIR is set ---
+counts_dir <- Sys.getenv("TCRLIB_COUNTS_DIR", unset = results_dir)
+```
+
+# counts
+
+One count file per sequenced sample. The sample sheets carry the renaming recorded in `sample_log.xlsx`:
+the IDs used throughout this analysis (`analysis_id`) are *not* the IDs of the FASTQ files (`Screen<n>_TCR_<n>`),
+so the counts are renamed before being joined.
+
+```{r}
+samples_list <- fread(file.path(aux_dir, "tcr_library_screen_samples.tsv")) %>%
+  mutate(counts_file = file.path(counts_dir, screen, sample, paste0(sample, ".counts.txt")))
+missing_counts <- samples_list$counts_file[!file.exists(samples_list$counts_file)]
+if (length(missing_counts) > 0) {
+  stop("Missing count files (run scripts/tcr-library/hits/run-hits.sh first):\n",
+       paste(missing_counts, collapse = "\n"))
+}
+stopifnot(!anyDuplicated(samples_list$analysis_id))
+finalCounts <- data.frame(TCR.ID = character(0))
+for (i in seq_len(nrow(samples_list))) {
+  counts <- read.table(samples_list$counts_file[i])
+  colnames(counts) <- c("TCR.ID", samples_list$analysis_id[i])
+  finalCounts <- finalCounts %>% full_join(counts, by = "TCR.ID")
+}
+finalCounts[is.na(finalCounts)] <- 0
+finalCounts <- finalCounts[, c("TCR.ID", samples_list$analysis_id)]
+dir.create(file.path(results_dir, "counts"), recursive = TRUE, showWarnings = FALSE)
+write.table(finalCounts, file = file.path(results_dir, "counts", "all.counts.txt"),
+            sep = "\t", row.names = FALSE, quote = FALSE)
+cat(nrow(finalCounts), "library constructs x", nrow(samples_list), "samples\n")
+print(samples_list %>% select(screen, sample, analysis_id, analysis_name, included))
+```
+
+```{r}
+all_counts <- fread(file.path(results_dir, "counts", "all.counts.txt"), header = TRUE) %>%
+  as.data.frame() %>%
+  tibble::column_to_rownames(var = "TCR.ID")
+rm(finalCounts, counts)
+```
+
+# comparisons
+
+Donor 1 (PDL6.2) and donor 2 (PDL5.9) are the replicates of the edgeR analysis; for the relevant and
+irrelevant libraries each donor was screened twice (screen 1 and screen 2), giving 4 replicates per group.
+
+- `relevant` / `irrelevant`: 4-1BB+ vs 4-1BB- of the RIO136 (relevant) and RIO008 (irrelevant) libraries.
+- `positive`: B cells, the positive control of the assay.
+- `*_bulk`: the same 4-1BB+ fractions against the unsorted bulk.
+
+`positive_bulk` is the only comparison that keeps constructs with zero counts in some sample.
+
+```{r}
+comparisons <- list(
+  positive        = list(pos = c(20, 22), neg = c(17, 18), drop_zeros = TRUE,  controls = TRUE),
+  positive_bulk   = list(pos = c(20, 22), neg = 23:26,     drop_zeros = FALSE, controls = TRUE),
+  relevant        = list(neg = 1:4,       pos = 5:8,       drop_zeros = TRUE,  controls = FALSE),
+  relevant_bulk   = list(neg = 23:26,     pos = 5:8,       drop_zeros = TRUE,  controls = FALSE),
+  irrelevant      = list(neg = 9:12,      pos = 13:16,     drop_zeros = TRUE,  controls = FALSE),
+  irrelevant_bulk = list(neg = 23:26,     pos = 13:16,     drop_zeros = TRUE,  controls = FALSE)
+)
+positive_controls <- c("PMEL17_gp100", "NKI.CDK.53_mutCDK4",
+                       paste0("NegCtrl", 1:6))
+```
+
+# edgeR
+
+Constructs are named `<TCR>.a/.b/.c` (one entry per codon-optimised variant). A TCR is called a hit when
+at least 2 of its variants pass logFC > 1.5 and FDR <= 0.05.
+
+```{r, warning=FALSE}
+for (comparison in names(comparisons)) {
+  cfg <- comparisons[[comparison]]
+  # --- The group vector follows the column order of sample.id ---
+  sample.id <- paste0("TCR_", c(if (cfg$controls) c(cfg$pos, cfg$neg) else c(cfg$neg, cfg$pos)))
+  group <- if (cfg$controls) {
+    c(rep("pos", length(cfg$pos)), rep("neg", length(cfg$neg)))
+  } else {
+    c(rep("neg", length(cfg$neg)), rep("pos", length(cfg$pos)))
+  }
+  samples <- all_counts %>% select(all_of(sample.id))
+  if (cfg$drop_zeros) {
+    samples <- samples[apply(samples, 1, function(row) all(row >= 1)), ]
+  }
+  out_dir <- file.path(results_dir, "edger", comparison)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  y <- DGEList(counts = samples, genes = rownames(samples), group = group)
+  selr <- rowSums(cpm(y$counts) > 10) >= 1
+  selc <- colSums(y$counts) >= 100000
+  y <- y[selr, selc]
+  cat("\n==", comparison, ":", sum(selr), "constructs,", sum(selc), "of", length(selc), "samples kept\n")
+  cols <- as.numeric(y$samples$group) + 2
+  par(mfrow = c(2, 1))
+  barplot(colSums(y$counts), las = 2, main = paste(comparison, "- counts per index"), col = cols, cex.names = 0.5, cex.axis = 0.8)
+  barplot(rowSums(y$counts), las = 2, main = paste(comparison, "- counts per TCR.ID"), axisnames = FALSE, cex.axis = 0.8)
+  y <- estimateDisp(y)
+  et <- exactTest(y, pair = c("neg", "pos"))
+  et_table <- data.table(et[["genes"]], et[["table"]])
+  et_table[, FDR := p.adjust(PValue, method = "BH")]
+  et_table <- et_table %>% mutate(logFDR = -log10(FDR))
+  et_table2 <- et_table %>% mutate(TCR = gsub("\\.[abc]$", "", genes))
+  write.table(et_table2, file = file.path(out_dir, paste0(comparison, ".txt")),
+              quote = FALSE, sep = "\t", row.names = FALSE)
+  # --- Hits: TCRs with at least 2 variants passing logFC > 1.5 and FDR <= 0.05 ---
+  pos <- et_table2 %>% filter(logFC > 1.5 & FDR <= 0.05)
+  summary_pos <- pos %>% group_by(TCR) %>% summarise("n" = n(), .groups = "drop")
+  pos_hits <- summary_pos %>% filter(n >= 2) %>% pull(TCR)
+  hits_file <- paste0(comparison, if (cfg$controls) "_hits.txt" else "_pos_hits.txt")
+  write.table(pos_hits, file = file.path(out_dir, hits_file),
+              quote = FALSE, sep = "\t", row.names = FALSE, col.names = FALSE)
+  cat(length(pos_hits), "hits:", paste(pos_hits, collapse = ", "), "\n")
+  # --- Controls comparisons highlight the known controls, the others the hits ---
+  highlight <- if (cfg$controls) positive_controls else pos_hits
+  point_size <- if (cfg$controls) 2 else 1.5
+  alpha_bg <- 0.5
+  size_bg <- if (cfg$controls) 0.5 else 0.2
+  p <- ggplot(et_table2, aes(x = logCPM, y = logFC)) +
+    geom_point(alpha = alpha_bg, size = size_bg) +
+    geom_point(data = et_table2 %>% filter(TCR %in% highlight), aes(x = logCPM, y = logFC, color = TCR), size = point_size) +
+    ggtitle(if (cfg$controls) comparison else "EdgeR") +
+    theme(aspect.ratio = 0.5) +
+    theme(legend.position = "none")
+  q <- ggplot(et_table2, aes(x = logFC, y = logFDR)) +
+    geom_point(alpha = alpha_bg, size = size_bg) +
+    geom_point(data = et_table2 %>% filter(TCR %in% highlight), aes(x = logFC, y = logFDR, color = TCR), size = point_size) +
+    theme(aspect.ratio = 1)
+  if (!cfg$controls) q <- q + ggtitle("EdgeR") + theme(legend.position = "none")
+  ggsave(wrap_plots(p, q, ncol = 2), height = 12, width = 12,
+         file = file.path(out_dir, paste0(comparison, if (cfg$controls) "_controls.pdf" else ".pdf")))
+}
+rm(comparison, cfg, sample.id, group, samples, out_dir, y, selr, selc, cols, et, et_table, et_table2,
+   pos, summary_pos, pos_hits, hits_file, highlight, point_size, alpha_bg, size_bg, p, q)
+```
+
+```{r}
+print("Plots saved successfully.")
+```

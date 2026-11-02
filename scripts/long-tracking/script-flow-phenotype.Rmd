@@ -1,0 +1,567 @@
+---
+title: "script-flow-phenotype"
+author: "Ricardo Pujol <rpujol@vhio.net>, Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-10-29"
+output: html_document
+---
+
+# setup
+
+Longitudinal flow-cytometry phenotyping of PBLs: PD-1 levels and activation/differentiation markers in
+CD4+ and CD8+ lymphocytes across the sampled timepoints.
+
+`setup/setup.R` is not sourced here: it configures the Python/MAGIC environment needed by the single-cell
+scripts only. Paths are defined the same way.
+
+```{r, warning=FALSE, message=FALSE}
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggforce)
+  library(ggplot2)
+  library(grid)
+  library(patchwork)
+  library(RColorBrewer)
+  library(readr)
+  library(scales)
+  library(stringr)
+  library(tidyr)
+})
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
+flow_dir <- file.path(project_dir, "data", "flow-phenotype")
+results_dir <- file.path(project_dir, "results", "long-tracking", "phenotype")
+source(file.path(setup_dir, "functions-flow-phenotype.R"))
+# --- Figures were drawn with Arial; default sans font where it is missing ---
+plot_font <- if ("Arial" %in% systemfonts::system_fonts()$family) "Arial" else ""
+```
+
+# load
+
+```{r}
+pd1.levels <- read.csv(file.path(flow_dir, "RIO-136-PD1-cat.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
+panel.1 <- read.csv(file.path(flow_dir, "RIO-136-CD4-CD8-panel1.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
+panel.2 <- read.csv(file.path(flow_dir, "RIO-136-CD4-CD8-panel2.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
+data <- rbind(panel.1, panel.2)
+data.cd4 <- data %>% filter(CD4_CD8 == "CD4")
+data.cd8 <- data %>% filter(CD4_CD8 == "CD8")
+pheno_days <- c(0, 14, 42, 56, 84, 112, 140)
+vline_df <- data.frame(day = pheno_days)
+theme_manuscript <- theme_classic(base_size = 10, base_family = plot_font) +
+  theme(
+    text = element_text(family = plot_font),
+    legend.position = "bottom",
+    legend.text = element_text(size = 9),
+    legend.title = element_blank(),
+    axis.line = element_line(linewidth = 0.35, colour = "black"),
+    axis.ticks = element_line(linewidth = 0.35, colour = "black"),
+    axis.text = element_text(size = 8, colour = "black"),
+    axis.title = element_text(size = 10, colour = "black"),
+    strip.background = element_blank(),
+    strip.text = element_text(size = 10, colour = "black"),
+    panel.grid = element_blank(),
+    panel.background = element_blank(),
+    plot.background = element_blank(),
+    aspect.ratio = 0.5
+  )
+pd1_labels_counts <- c(
+  "PD1_hi" = "PD-1 hi",
+  "PD1_int" = "PD-1 int",
+  "PD1_neg" = "PD-1 neg"
+)
+pd1_labels_flow <- c(
+  "PD1hi" = "PD-1 hi",
+  "PD1int" = "PD-1 int",
+  "PD1neg" = "PD-1 neg"
+)
+plots_list <- list()
+```
+
+# pheno
+
+Calculate the fraction of each PD1 category within the total marker-positive population. For example, among all CD27+ cells, what proportion are PD1hi, PD1int, or PD1neg?
+
+```{r, message=FALSE, warning=FALSE}
+day_vec <- c(14, 42, 56, 84, 112, 140, 0)
+CD4pan1 <- read_panel("Reanalysis-CD4pan1.csv", day_vec, "CD4", dir = flow_dir)
+CD4pan2 <- read_panel("Reanalysis-CD4pan2.csv", day_vec, "CD4", dir = flow_dir)
+CD8pan1 <- read_panel("Reanalysis-CD8pan1.csv", day_vec, "CD8", dir = flow_dir)
+CD8pan2 <- read_panel("Reanalysis-CD8pan2.csv", day_vec, "CD8", dir = flow_dir)
+CD4pan1 <- rename_panel_base(CD4pan1, "CD4", 1)
+CD4pan2 <- rename_panel_base(CD4pan2, "CD4", 2)
+CD8pan1 <- rename_panel_base(CD8pan1, "CD8", 1)
+CD8pan2 <- rename_panel_base(CD8pan2, "CD8", 2)
+CD4_all <- left_join(CD4pan1, CD4pan2, by = "day")
+CD8_all <- left_join(CD8pan1, CD8pan2, by = "day")
+markers_all <- c("CD27", "CD28", "CD38", "CD39", "LAG3", "HLADR", "CCR7", "CD45RO", "FoxP3", "ICOS", "Ki67", "TIM3")
+pd1_groups <- c("PD1hi", "PD1int", "PD1neg")
+```
+
+```{r}
+CD4_prop_long <- CD4_all %>%
+  compute_marker_props("CD4", pd1_groups, markers_all) %>%
+  pivot_marker_props("CD4")
+CD8_prop_long <- CD8_all %>%
+  compute_marker_props("CD8", pd1_groups, markers_all) %>%
+  pivot_marker_props("CD8")
+```
+
+# pd1
+
+Longitudinal levels of PD1 levels (hi, int, low).
+
+```{r}
+pd1.levels_long_mean <- pd1.levels %>%
+  mutate(PD1_pos = PD1_hi + PD1_int) %>%
+  pivot_longer(
+    c(PD1_neg, PD1_int, PD1_hi, PD1_pos),
+    names_to = "pd1_level",
+    values_to = "n"
+  ) %>%
+  summarise(
+    n = mean(n, na.rm = TRUE),
+    total_number = mean(total_number, na.rm = TRUE),
+    PD1_pct = mean(n / total_number * 100, na.rm = TRUE),
+    .by = c(day, CD4_CD8, pd1_level)
+  )
+plot.pd1 <- pd1.levels_long_mean %>%
+  filter(pd1_level %in% c("PD1_hi", "PD1_int", "PD1_neg")) %>%
+  mutate(
+    pd1_level = factor(pd1_level, levels = c("PD1_hi", "PD1_int", "PD1_neg"))
+  ) %>%
+  ggplot(aes(day, PD1_pct, colour = pd1_level, group = pd1_level)) +
+  geom_vline(
+    data = vline_df,
+    aes(xintercept = day),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    linewidth = 0.25,
+    colour = "grey85"
+  ) +
+  geom_line(linewidth = 0.45) +
+  geom_point(size = 1.4) +
+  scale_x_continuous(
+    breaks = pheno_days,
+    expand = expansion(mult = c(0.02, 0.04))
+  ) +
+  scale_y_log10(
+    limits = c(0.1, 100),
+    breaks = c(0.1, 1, 10, 100),
+    labels = c("0.1", "1", "10", "100"),
+    expand = expansion(mult = c(0.03, 0.08))
+  ) +
+  scale_colour_discrete(
+    breaks = names(pd1_labels_counts),
+    labels = unname(pd1_labels_counts)
+  ) +
+  facet_wrap(~CD4_CD8, ncol = 1) +
+  labs(
+    x = NULL,
+    y = "Frequency of lymphocytes (%)",
+    colour = NULL
+  ) +
+  theme_manuscript
+plots_list[["pd1_levels"]] <- plot.pd1
+print(plots_list[["pd1_levels"]])
+```
+
+# cd4
+
+```{r}
+y_limits_cd4 <- data.cd4 %>%
+  group_by(marker) %>%
+  summarise(
+    y_max = ceiling(max(lymphocyte_pc, na.rm = TRUE) / 10) * 10,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    day = min(data.cd4$day, na.rm = TRUE),
+    lymphocyte_pc = y_max
+  )
+plot.cd4 <- data.cd4 %>%
+  mutate(
+    pd1_level = factor(pd1_level, levels = c("PD1_hi", "PD1_int", "PD1_neg"))
+  ) %>%
+  ggplot() +
+  geom_blank(
+    data = y_limits_cd4,
+    aes(x = day, y = lymphocyte_pc),
+    inherit.aes = FALSE
+  ) +
+  geom_vline(
+    data = vline_df,
+    aes(xintercept = day),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    linewidth = 0.25,
+    colour = "grey85"
+  ) +
+  geom_line(
+    aes(x = day, y = lymphocyte_pc, colour = pd1_level, group = pd1_level),
+    linewidth = 0.45
+  ) +
+  geom_point(
+    aes(x = day, y = lymphocyte_pc, colour = pd1_level, group = pd1_level),
+    size = 1.4
+  ) +
+  facet_wrap(~ marker, scales = "free_y", ncol = 4) +
+  scale_x_continuous(
+    breaks = pheno_days,
+    expand = expansion(mult = c(0.02, 0.04))
+  ) +
+  scale_y_continuous(
+    limits = c(0, NA),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_colour_discrete(
+    breaks = names(pd1_labels_counts),
+    labels = unname(pd1_labels_counts)
+  ) +
+  labs(
+    x = NULL,
+    y = "Frequency of CD4+ lymphocytes (%)",
+    colour = NULL
+  ) +
+  theme_manuscript
+plots_list[["cd4_pd1_markers"]] <- plot.cd4
+print(plots_list[["cd4_pd1_markers"]])
+```
+
+CD4+ lymphocytes
+
+```{r, warning=FALSE}
+y_limits_cd4_pheno <- CD4_prop_long %>%
+  group_by(marker) %>%
+  summarise(
+    y_max = ceiling(max(100 * prop, na.rm = TRUE) / 10) * 10,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    day = min(CD4_prop_long$day, na.rm = TRUE),
+    prop_pct = y_max
+  )
+plots_list[["cd4_pheno_markers"]] <- CD4_prop_long %>%
+  mutate(PD1_cat = factor(PD1_cat, levels = c("PD1hi", "PD1int", "PD1neg"))) %>%
+  ggplot() +
+  geom_blank(
+    data = y_limits_cd4_pheno,
+    aes(x = day, y = prop_pct),
+    inherit.aes = FALSE
+  ) +
+  geom_vline(
+    data = vline_df,
+    aes(xintercept = day),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    linewidth = 0.25,
+    colour = "grey85"
+  ) +
+  geom_line(
+    aes(x = day, y = 100 * prop, colour = PD1_cat, group = PD1_cat),
+    linewidth = 0.45
+  ) +
+  geom_point(
+    aes(x = day, y = 100 * prop, colour = PD1_cat, group = PD1_cat),
+    size = 1.4
+  ) +
+  facet_wrap(~ marker, scales = "free_y", ncol = 4) +
+  scale_x_continuous(
+    breaks = pheno_days,
+    expand = expansion(mult = c(0.02, 0.04))
+  ) +
+  scale_y_continuous(
+    limits = c(0, NA),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_colour_discrete(
+    breaks = names(pd1_labels_flow),
+    labels = unname(pd1_labels_flow)
+  ) +
+  labs(
+    x = NULL,
+    y = "Frequency of CD4+ lymphocytes (%)",
+    colour = NULL
+  ) +
+  theme_manuscript
+print(plots_list[["cd4_pheno_markers"]])
+```
+
+```{r}
+selected_markers <- c("HLADR", "CD38", "CD39", "Ki67")
+plots_cd4 <- lapply(
+  selected_markers,
+  function(m) make_marker_pie_plot(CD4_prop_long, m, subset_label = "CD4")
+)
+plots_list[["cd4_pheno_selected"]] <- wrap_plots(plots_cd4, ncol = 2) +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    text = element_text(family = plot_font)
+  )
+plots_list[["cd4_pheno_selected"]]
+```
+
+# cd8
+
+```{r}
+excluded_markers_cd8 <- c("FoxP3", "CD39", "DR", "CD38", "LAG3", "TIM3")
+markers_cd8_remaining <- setdiff(
+  if (is.factor(data.cd8$marker)) levels(data.cd8$marker) else unique(as.character(data.cd8$marker)),
+  excluded_markers_cd8
+)
+data.cd8_remaining <- data.cd8 %>%
+  filter(marker %in% markers_cd8_remaining) %>%
+  mutate(
+    marker = factor(as.character(marker), levels = markers_cd8_remaining)
+  )
+y_limits_cd8 <- data.cd8_remaining %>%
+  group_by(marker) %>%
+  summarise(
+    y_max = ceiling(max(lymphocyte_pc, na.rm = TRUE) / 10) * 10,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    day = min(data.cd8_remaining$day, na.rm = TRUE),
+    lymphocyte_pc = y_max
+  )
+plot.cd8 <- data.cd8_remaining %>%
+  mutate(
+    pd1_level = factor(pd1_level, levels = c("PD1_hi", "PD1_int", "PD1_neg"))
+  ) %>%
+  ggplot() +
+  geom_blank(
+    data = y_limits_cd8,
+    aes(x = day, y = lymphocyte_pc),
+    inherit.aes = FALSE
+  ) +
+  geom_vline(
+    data = vline_df,
+    aes(xintercept = day),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    linewidth = 0.25,
+    colour = "grey85"
+  ) +
+  geom_line(
+    aes(x = day, y = lymphocyte_pc, colour = pd1_level, group = pd1_level),
+    linewidth = 0.45
+  ) +
+  geom_point(
+    aes(x = day, y = lymphocyte_pc, colour = pd1_level, group = pd1_level),
+    size = 1.4
+  ) +
+  facet_wrap(~ marker, scales = "free_y", ncol = 4) +
+  scale_x_continuous(
+    breaks = pheno_days,
+    expand = expansion(mult = c(0.02, 0.04))
+  ) +
+  scale_y_continuous(
+    limits = c(0, NA),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_colour_discrete(
+    breaks = names(pd1_labels_counts),
+    labels = unname(pd1_labels_counts)
+  ) +
+  labs(
+    x = NULL,
+    y = "Marker+ cells within CD8+ PD-1 subset (%)",
+    colour = NULL
+  ) +
+  theme_manuscript
+print(plot.cd8)
+plots_list[["cd8_pd1_markers"]] <- plot.cd8
+print(plots_list[["cd8_pd1_markers"]])
+```
+
+```{r}
+markers.cd8 <- c("CD39", "DR", "CD38", "LAG3", "TIM3")
+y_limits_cd8 <- data.cd8 %>%
+  filter(marker %in% markers.cd8) %>%
+  mutate(
+    marker = factor(marker, levels = markers.cd8)
+  ) %>%
+  group_by(marker) %>%
+  summarise(
+    y_max = ceiling(max(lymphocyte_pc, na.rm = TRUE) / 10) * 10,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    day = min(data.cd8$day, na.rm = TRUE),
+    lymphocyte_pc = y_max
+  )
+plot.cd8 <- data.cd8 %>%
+  filter(marker %in% markers.cd8) %>%
+  mutate(
+    marker = factor(marker, levels = markers.cd8),
+    pd1_level = factor(pd1_level, levels = c("PD1_hi", "PD1_int", "PD1_neg"))
+  ) %>%
+  ggplot() +
+  geom_blank(
+    data = y_limits_cd8,
+    aes(x = day, y = lymphocyte_pc),
+    inherit.aes = FALSE
+  ) +
+  geom_vline(
+    data = vline_df,
+    aes(xintercept = day),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    linewidth = 0.25,
+    colour = "grey85"
+  ) +
+  geom_line(
+    aes(x = day, y = lymphocyte_pc, colour = pd1_level, group = pd1_level),
+    linewidth = 0.45
+  ) +
+  geom_point(
+    aes(x = day, y = lymphocyte_pc, colour = pd1_level, group = pd1_level),
+    size = 1.4
+  ) +
+  facet_wrap(~ marker, scales = "free_y", ncol = 5) +
+  scale_x_continuous(
+    breaks = pheno_days,
+    expand = expansion(mult = c(0.02, 0.04))
+  ) +
+  scale_y_continuous(
+    limits = c(0, NA),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_colour_discrete(
+    breaks = names(pd1_labels_counts),
+    labels = unname(pd1_labels_counts)
+  ) +
+  labs(
+    x = NULL,
+    y = "Frequency of CD8+ lymphocytes (%)",
+    colour = NULL
+  ) +
+  theme_manuscript
+print(plot.cd8)
+plots_list[["cd8_pd1_markers_selected"]] <- plot.cd8
+print(plots_list[["cd8_pd1_markers_selected"]])
+```
+
+```{r}
+y_limits_cd8_pheno <- CD8_prop_long %>%
+  group_by(marker) %>%
+  summarise(
+    y_max = ceiling(max(100 * prop, na.rm = TRUE) / 10) * 10,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    day = min(CD8_prop_long$day, na.rm = TRUE),
+    prop_pct = y_max
+  )
+plots_list[["cd8_pheno_markers"]] <- CD8_prop_long %>%
+  mutate(PD1_cat = factor(PD1_cat, levels = c("PD1hi", "PD1int", "PD1neg"))) %>%
+  ggplot() +
+  geom_blank(
+    data = y_limits_cd8_pheno,
+    aes(x = day, y = prop_pct),
+    inherit.aes = FALSE
+  ) +
+  geom_vline(
+    data = vline_df,
+    aes(xintercept = day),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    linewidth = 0.25,
+    colour = "grey85"
+  ) +
+  geom_line(
+    aes(x = day, y = 100 * prop, colour = PD1_cat, group = PD1_cat),
+    linewidth = 0.45
+  ) +
+  geom_point(
+    aes(x = day, y = 100 * prop, colour = PD1_cat, group = PD1_cat),
+    size = 1.4
+  ) +
+  facet_wrap(~ marker, scales = "free_y", ncol = 4) +
+  scale_x_continuous(
+    breaks = pheno_days,
+    expand = expansion(mult = c(0.02, 0.04))
+  ) +
+  scale_y_continuous(
+    limits = c(0, NA),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  scale_colour_discrete(
+    breaks = names(pd1_labels_flow),
+    labels = unname(pd1_labels_flow)
+  ) +
+  labs(
+    x = NULL,
+    y = "Frequency of CD8+ lymphocytes (%)",
+    colour = NULL
+  ) +
+  theme_manuscript
+print(plots_list[["cd8_pheno_markers"]])
+```
+
+```{r}
+selected_markers <- c("CD39", "HLADR", "CD38", "LAG3", "TIM3")
+plots_cd8 <- lapply(
+  selected_markers,
+  function(m) make_marker_pie_plot(CD8_prop_long, m, subset_label = "CD8")
+)
+plots_list[["cd8_pheno_selected"]] <- wrap_plots(plots_cd8, ncol = 5) +
+  plot_layout(guides = "collect") &
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    text = element_text(family = plot_font)
+  )
+plots_list[["cd8_pheno_selected"]]
+```
+
+# z-score variation
+
+CD4+ and CD8+ lymphocyte z-score variation relative to day 0.
+
+```{r}
+markers.cd4 <- c("CD39", "DR", "ICOS", "LAG3", "TIM3")
+plots_list[["cd4_zscore_markers"]] <- make_zscore_variation_plot(
+  data.cd4 %>%
+    filter(marker %in% markers.cd4) %>%
+    mutate(marker = factor(marker, levels = markers.cd4)),
+  subset_label = "CD4"
+)
+print(plots_list[["cd4_zscore_markers"]])
+markers.cd8 <- c("CD39", "DR", "CD38", "LAG3", "TIM3")
+plots_list[["cd8_zscore_markers"]] <- make_zscore_variation_plot(
+  data.cd8 %>%
+    filter(marker %in% markers.cd8) %>%
+    mutate(marker = factor(marker, levels = markers.cd8)),
+  subset_label = "CD8"
+)
+print(plots_list[["cd8_zscore_markers"]])
+```
+
+# save
+
+```{r}
+dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
+for (i in names(plots_list)) {
+  outfile <- file.path(results_dir, paste0(i, ".pdf"))
+  tryCatch({
+    if (capabilities("cairo")) {
+      grDevices::cairo_pdf(file = outfile, width = 12, height = 8)
+    } else {
+      grDevices::pdf(file = outfile, width = 12, height = 8)
+    }
+    print(plots_list[[i]])
+    dev.off()
+  }, error = function(e) {
+    message("Error en plot: ", i)
+    message("  ", e$message)
+    if (dev.cur() != 1) {
+      try(dev.off(), silent = TRUE)
+    }
+  })
+}
+```
+
+```{r}
+print("Plots saved successfully.")
+```

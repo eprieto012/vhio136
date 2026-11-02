@@ -29,13 +29,13 @@ reactivity_colors <- c(
   "NA" = "gray80"
 )
 manual_colors <- c(
-  "CD8 TCM"                 = "#0B6F61",
-  "CD8 activated TCM-like"  = "#84D8C5",
+  "CD8 TCM" = "#0B6F61",
+  "CD8 LEF1+ ZNF683+" = "#84D8C5",
   "CD8 activated TEM GZMK+" = "#E45C95",
-  "CD8 LEF1+ ZNF683+"       = "#B08BCE",
-  "CD8 TEMRA FGFBP2+"       = "#123FD1",
-  "CD8 TEMRA LILRB1+"       = "#78B7F9",
-  "CD8 proliferating"       = "#4B1D73"
+  "CD8 TEM KLRG1+" = "#B08BCE",
+  "CD8 TEMRA FGFBP2+" = "#123FD1",
+  "CD8 TEMRA LILRB1+" = "#78B7F9",
+  "CD8 activated/proliferating" = "#4B1D73"
 )
 clone_colors <- c(
   "Single (0 < X <= 1)" = "gray80",
@@ -65,13 +65,13 @@ signature_colors <- c(
   "TRTPBL_UCell" = "purple",
   "TRTPBL_NeoTCRPBL_UCell" = "purple4",
   "Yossef_NeoTCR_PBL_UCell" = "darkblue",
-  "iTAG_pre_UCell" = "red",
+  "iTAG_pre_UCell" = "#E41A1C",
   "iTAG_pre_v2_UCell" = "red2",
-  "iTAG_post1_UCell" = "brown3",
+  "iTAG_post1_UCell" = "#7A0019",
   "iTAG_post1_v2_UCell" = "red4",
-  "iTAG_post2_UCell" = "orange",
+  "iTAG_post2_UCell" = "#FF8C00",
   "iTAG_post2_v2_UCell" = "orange3",
-  "iTAG_post6_UCell" = "goldenrod",
+  "iTAG_post6_UCell" = "#A6761D",
   "iTAG_all_UCell" = "green2"
 )
 category_colors_yossef <- c(
@@ -80,11 +80,10 @@ category_colors_yossef <- c(
   "CD8.TEMRA" = "#8A2BE2",
   "CD8.EM" = "#FF69B4",
   "CD8.TEX" = "black",
-  "Non-hits"  = "#8C6D5C",
+  "Non-hits" = "#8C6D5C",
   "NaiveLike" = "#7A8F6B",
-  "Other"     = "#C6B8A6",
-  "Viral_databases" = "#2F6F8F",
-  "Non-reactive;Viral_databases" = "#7FAF9B"
+  "Other" = "#C6B8A6",
+  "Viral_databases" = "#2F6F8F"
 )
 
 # --- Configure plotting style and visualization settings ---

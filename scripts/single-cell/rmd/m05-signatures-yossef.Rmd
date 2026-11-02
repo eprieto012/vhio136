@@ -1,0 +1,298 @@
+---
+title: "m05-signatures-yossef"
+author: "Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-01-08"
+output: html_document
+---
+
+# setup
+
+```{r setup, message=FALSE, warning=FALSE}
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+source(file.path(setup_dir, "setup.R"))
+source(file.path(setup_dir, "functions-yossef.R"))
+plots_list <- list()
+sample <- "yossef-cohort"
+batch_dir <- file.path(datapath, sample)
+sig_root <- file.path(datapath, "DEG-signatures")
+compartment <- "cd8_int_nn"
+```
+
+# load
+
+Yossef et al. cohort processed in m01-data-load-yossef.Rmd.
+
+```{r}
+object <- readRDS(file.path(batch_dir, "seurat", "int_filt_annot.rds"))
+```
+
+# signatures
+
+iTAG signatures (m04-signatures.Rmd) + TRTPBL + NeoTCRPBL, scored as in m04.
+
+```{r}
+signatures <- readRDS(file.path(sig_root, "vhio136", compartment, "markers", "itag_signatures.rds"))
+sigs <- fread(file.path(aux_dir, "signatures", "published_signatures.tsv"), header = TRUE)
+sigs <- lapply(sigs, function(x) unique(na.omit(x)))
+signatures$TRTPBL <- sigs$TRTPBL
+signatures$Yossef_NeoTCR_PBL <- sigs$Yossef_NeoTCR_PBL
+object <- AddModuleScore_UCell(object, assay = "RNA", features = signatures, w_neg = 0.15, ncores = 8)
+dir.create(file.path(batch_dir, "seurat"), recursive = TRUE, showWarnings = FALSE)
+saveRDS(object, file.path(batch_dir, "seurat", "int_filt_annot_signatures.rds"))
+rm(sigs)
+```
+
+# performance
+
+Overall performance of the transcriptomic signatures.
+
+```{r, warning=FALSE}
+g1 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_pre_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Other")),
+  category_colors = category_colors_yossef
+)
+g2 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_post1_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Other")),
+  category_colors = category_colors_yossef
+)
+g3 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_post2_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Other")),
+  category_colors = category_colors_yossef
+)
+g4 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_post6_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Other")),
+  category_colors = category_colors_yossef
+)
+g5 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "iTAG_all_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Other")),
+  category_colors = category_colors_yossef
+)
+g6 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "Yossef_NeoTCR_PBL_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Other")),
+  category_colors = category_colors_yossef
+)
+g7 <- plot_box_with_stats(
+  seurat_object = object,
+  feature = "TRTPBL_UCell",
+  group_by = "category",
+  comparisons = list(c("Reactive", "Other")),
+  category_colors = category_colors_yossef
+)
+p <- wrap_plots(list(g1, g2, g3, g4, g5, g6, g7), ncol = 7)
+plots_list[["iTAG_signature_on_Yossef_yield"]] <- p
+rm(g1, g2, g3, g4, g5, g6, g7, p)
+```
+
+The number of TCRs captured by iTAG signatures in the Yossef et al. cohort.
+
+```{r}
+top_clonotypes <- 100
+signatures_to_compare <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_post6_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+performance_plots <- list()
+for (i in unique(object$patient)) {
+  res <- plot_reactive_top_yossef(object,
+                                  sample = i,
+                                  pivot_cols = signatures_to_compare,
+                                  top_n = top_clonotypes
+  )
+  performance_plots[[i]] <- res$plot
+}
+plots_list[["iTAG_signature_on_Yossef_capture"]] <- wrap_plots(performance_plots, ncol = 4)
+rm(performance_plots, res, i)
+```
+
+Reactive TCRs identified vs interrogated TCRs.
+
+```{r}
+set.seed(SEED)
+performance_plots <- list()
+for (i in unique(object$patient)) {
+  performance_plots[[i]] <- plot_reactive_tcrs_vs_tested_yossef(object,
+                                                                step = 25,
+                                                                pivot_cols = signatures_to_compare,
+                                                                sample_id = i
+  )
+}
+plots_list[["iTAG_signature_on_Yossef_curves"]] <- wrap_plots(performance_plots, ncol = 4, guides = "collect") & theme(legend.position = "bottom")
+rm(performance_plots, i)
+```
+
+ROC curves.
+
+```{r}
+auc_plots <- list()
+for (i in unique(object$patient)) {
+  auc_plots[[i]] <- plot_ROC_curves_yossef(object,
+                                           pivot_cols = signatures_to_compare,
+                                           sample_id = i
+  )
+}
+plots_list[["iTAG_signature_on_Yossef_auc"]] <- wrap_plots(auc_plots, ncol = 4, guides = "collect") & theme(legend.position = "bottom")
+rm(auc_plots, i)
+```
+
+Save plots.
+
+```{r, warning=FALSE}
+plot_dir <- file.path(sig_root, "yossef-cohort", "bulk", "performance")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+for (i in names(plots_list)) {
+  pdf(file = file.path(plot_dir, paste0(i, ".pdf")), width = 297 / 15, height = 210 / 15)
+  print(plots_list[[i]])
+  dev.off()
+}
+rm(plot_dir)
+```
+
+# CD8+ non-naïve
+
+Same evaluation restricted to CD8+ non-naïve T cells (scGate CD8T, excluding ProjecTILs CD8.NaiveLike and CD8.MAIT; annotated in m01-data-load-yossef.Rmd), the population on which the iTAG signatures were built. Unlike vhio136, where CD8 cells come from the consensus of MAGIC/pdfCluster and scGate, here CD8 cells are defined by scGate only, because this cohort has no MAGIC/pdfCluster step. Signature scores are the ones computed above on all cells (UCell scores each cell independently). Plots are saved in `DEG-signatures/yossef-cohort/cd8_nn/performance/` (all-cell results in `DEG-signatures/yossef-cohort/bulk/performance/`).
+
+```{r, warning=FALSE}
+object_cd8_nn <- subset(object, subset = celltype == "cd8" & !functional.cluster %in% c("CD8.NaiveLike", "CD8.MAIT"))
+table(object_cd8_nn$patient, object_cd8_nn$category)
+yield_features <- c("iTAG_pre_UCell", "iTAG_post1_UCell", "iTAG_post2_UCell", "iTAG_post6_UCell", "iTAG_all_UCell", "Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+plots_cd8_nn <- list()
+plots_cd8_nn[["yield"]] <- wrap_plots(
+  lapply(yield_features, function(feature_i) {
+    plot_box_with_stats(
+      seurat_object = object_cd8_nn,
+      feature = feature_i,
+      group_by = "category",
+      comparisons = list(c("Reactive", "Other")),
+      category_colors = category_colors_yossef
+    )
+  }),
+  ncol = 7
+)
+performance_plots <- list()
+for (i in unique(object_cd8_nn$patient)) {
+  performance_plots[[i]] <- plot_reactive_top_yossef(object_cd8_nn,
+                                                     sample = i,
+                                                     pivot_cols = signatures_to_compare,
+                                                     top_n = top_clonotypes
+  )$plot
+}
+plots_cd8_nn[["capture"]] <- wrap_plots(performance_plots, ncol = 4)
+set.seed(SEED)
+performance_plots <- list()
+for (i in unique(object_cd8_nn$patient)) {
+  performance_plots[[i]] <- plot_reactive_tcrs_vs_tested_yossef(object_cd8_nn,
+                                                                step = 25,
+                                                                pivot_cols = signatures_to_compare,
+                                                                sample_id = i
+  )
+}
+plots_cd8_nn[["curves"]] <- wrap_plots(performance_plots, ncol = 4, guides = "collect") & theme(legend.position = "bottom")
+performance_plots <- list()
+for (i in unique(object_cd8_nn$patient)) {
+  performance_plots[[i]] <- plot_ROC_curves_yossef(object_cd8_nn,
+                                                   pivot_cols = signatures_to_compare,
+                                                   sample_id = i
+  )
+}
+plots_cd8_nn[["auc"]] <- wrap_plots(performance_plots, ncol = 4, guides = "collect") & theme(legend.position = "bottom")
+plot_dir <- file.path(sig_root, "yossef-cohort", "cd8_nn", "performance")
+dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
+for (i in names(plots_cd8_nn)) {
+  pdf(file = file.path(plot_dir, paste0("iTAG_signature_on_Yossef_", i, ".pdf")), width = 297 / 15, height = 210 / 15)
+  print(plots_cd8_nn[[i]])
+  dev.off()
+}
+rm(object_cd8_nn, yield_features, plots_cd8_nn, performance_plots, plot_dir, i)
+```
+
+# AUC summary across patients
+
+Per-patient AUC at the clonotype level (same definition as the ROC plots: a clonotype is reactive if any of its cells is Reactive, scored by the mean across its cells), with DeLong 95% CI. Across patients: median and range, and paired two-sided Wilcoxon signed-rank test of each iTAG signature vs each published signature (one AUC per patient and signature; BH correction over all comparisons within each cell set). Saved in `signatures/{bulk,cd8_nn}/`: `auc_per_patient.tsv`, `auc_summary.tsv`, `auc_tests.tsv`, `iTAG_signature_on_Yossef_auc_forest.pdf` and `auc_sentence.txt`.
+
+```{r, warning=FALSE}
+reference_signatures <- c("Yossef_NeoTCR_PBL_UCell", "TRTPBL_UCell")
+signature_labels <- c(
+  iTAG_pre_UCell = "iTAG-pre", iTAG_post1_UCell = "iTAG-post1", iTAG_post2_UCell = "iTAG-post2",
+  iTAG_post6_UCell = "iTAG-post6", iTAG_all_UCell = "iTAG-all",
+  Yossef_NeoTCR_PBL_UCell = "NeoTCR-PBL", TRTPBL_UCell = "TRTPBL"
+)
+# --- Manuscript sentence summarising the AUCs (uses signature_labels, reference_signatures) ---
+auc_sentence <- function(res, n_patients, cells) {
+  s <- res$summary %>% mutate(signature = factor(signature, levels = signatures_to_compare)) %>% arrange(signature)
+  # --- Format a number with two decimals ---
+  fmt <- function(x) sprintf("%.2f", x)
+  med <- with(s, paste0(signature_labels[as.character(signature)], " ", fmt(median_AUC), " (range ", fmt(min_AUC), "-", fmt(max_AUC), ")"))
+  itag <- s %>% filter(!signature %in% reference_signatures) %>% slice_max(median_AUC, n = 1, with_ties = FALSE)
+  best <- as.character(itag$signature)
+  cmp <- res$tests %>% filter(signature == best)
+  cmp_txt <- vapply(seq_len(nrow(cmp)), function(k) {
+    verdict <- if (cmp$p_adj_BH[k] >= 0.05) "comparable to" else if (cmp$median_diff[k] > 0) "higher than" else "lower than"
+    sprintf("%s %s (median paired difference %+.2f, higher in %d/%d patients, BH-adjusted p = %.2g)",
+            verdict, signature_labels[cmp$reference[k]], cmp$median_diff[k], cmp$n_higher[k], n_patients, cmp$p_adj_BH[k])
+  }, character(1))
+  paste0(
+    "In the independent cohort of Yossef et al. (", n_patients, " patients; ", cells, "), the median per-patient AUC for ",
+    "identifying tumor-reactive clonotypes was ", paste(med, collapse = ", "), ". ",
+    "The best-performing iTAG signature (", signature_labels[best], ") was ", paste(cmp_txt, collapse = " and "),
+    " (paired Wilcoxon signed-rank test)."
+  )
+}
+auc_sets <- list(
+  bulk = list(object = object, cells = "all cells"),
+  cd8_nn = list(
+    object = subset(object, subset = celltype == "cd8" & !functional.cluster %in% c("CD8.NaiveLike", "CD8.MAIT")),
+    cells = "CD8+ non-naive T cells"
+  )
+)
+for (set_i in names(auc_sets)) {
+  plot_dir <- file.path(sig_root, "yossef-cohort", set_i, "performance")
+  auc_df <- auc_table_yossef(auc_sets[[set_i]]$object, signatures_to_compare)
+  res <- summarise_auc_yossef(auc_df, reference_signatures)
+  n_patients <- n_distinct(auc_df$patient[!is.na(auc_df$AUC)])
+  fwrite(auc_df, file.path(plot_dir, "auc_per_patient.tsv"), sep = "\t")
+  fwrite(res$summary, file.path(plot_dir, "auc_summary.tsv"), sep = "\t")
+  fwrite(res$tests, file.path(plot_dir, "auc_tests.tsv"), sep = "\t")
+  print(res$summary)
+  print(res$tests)
+  sentence <- auc_sentence(res, n_patients, auc_sets[[set_i]]$cells)
+  writeLines(sentence, file.path(plot_dir, "auc_sentence.txt"))
+  message("[", set_i, "] ", sentence)
+  p <- auc_df %>%
+    filter(!is.na(AUC)) %>%
+    mutate(signature = factor(signature, levels = rev(signatures_to_compare))) %>%
+    ggplot(aes(x = AUC, y = signature, color = signature)) +
+    geom_vline(xintercept = 0.5, linetype = "dashed", color = "gray60") +
+    geom_pointrange(aes(xmin = CI_low, xmax = CI_high), size = 0.3) +
+    geom_point(data = res$summary %>% mutate(signature = factor(signature, levels = rev(signatures_to_compare))),
+               aes(x = median_AUC), shape = 124, size = 6, color = "black") +
+    facet_wrap(~ paste0(patient, " (", n_reactive, "/", n_clonotypes, " reactive clonotypes)"), ncol = 4) +
+    scale_color_manual(values = signature_colors, guide = "none") +
+    scale_y_discrete(labels = signature_labels) +
+    coord_cartesian(xlim = c(0, 1)) +
+    labs(x = "AUC (DeLong 95% CI); black bar = median across patients", y = NULL, title = paste0("Yossef et al. cohort, ", auc_sets[[set_i]]$cells)) +
+    theme_minimal(base_size = 11)
+  pdf(file = file.path(plot_dir, "iTAG_signature_on_Yossef_auc_forest.pdf"), width = 297 / 20, height = 210 / 20)
+  print(p)
+  dev.off()
+}
+rm(reference_signatures, signature_labels, auc_sentence, auc_sets, set_i, plot_dir, auc_df, res, n_patients, sentence, p)
+```
+
+```{r, warning=FALSE}
+print("Plots saved successfully.")
+```

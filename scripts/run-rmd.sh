@@ -12,9 +12,9 @@
 # Usage (from the project root, vhio136/). Run it directly: it creates logs/ and results/
 # and submits itself with sbatch (any option before the .Rmd is passed to sbatch):
 # cd /mnt/bioinfnas/immuno/eprieto/analyses/vhio136
-# scripts/run-rmd.sh -J m01_vhio scripts/single-cell/m01_data_load_vhio_latest.Rmd
-# scripts/run-rmd.sh -J m01_rootpath scripts/single-cell/m01_data_load_rootpath_latest.Rmd
-# scripts/run-rmd.sh -J m01_yossef scripts/single-cell/m01_data_load_yossef_latest.Rmd
+# scripts/run-rmd.sh -J m01-vhio scripts/single-cell/rmd/m01-data-load-vhio.Rmd
+# scripts/run-rmd.sh -J m01-rootpath scripts/single-cell/rmd/m01-data-load-rootpath.Rmd
+# scripts/run-rmd.sh -J m01-yossef scripts/single-cell/rmd/m01-data-load-yossef.Rmd
 # (sbatch -J <name> scripts/run-rmd.sh <file>.Rmd also works, but only if logs/ already exists)
 
 set -euo pipefail
@@ -46,6 +46,6 @@ RMD="$(realpath "$1")"
 exec "$REPO/scripts/interactive-R.sh" --no-save --no-restore -s -e "
   code <- tempfile(fileext = '.R')
   invisible(knitr::purl('$RMD', output = code, quiet = TRUE, documentation = 0))
-  options(device = function(...) grDevices::pdf(file = NULL, width = 24, height = 12))
+  options(device = function(...) grDevices::pdf(file = NULL, width = 24, height = 12), warn = 1)
   source(code, echo = TRUE, max.deparse.length = Inf)
 "

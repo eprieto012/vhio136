@@ -1,42 +1,33 @@
-# --- Libraries ---
-library(dplyr)
-library(ggplot2)
-library(ggrepel)
-library(grid)
-library(patchwork)
-library(purrr)
-library(readxl)
-library(scales)
-library(stringr)
-library(tibble)
-library(tidyr)
-
-# --- Helpers and functions used by script(14).Rmd ---
-
+# --- Short label for the clonotype type: AA (aminoAcid) or nt ---
 tcr_clonotype_label <- function(clonotype_by) {
   ifelse(clonotype_by == "aminoAcid", "AA", "nt")
 }
 
+# --- Prefix a timepoint with "d" unless it already has it ---
 tcr_format_timepoint <- function(x) {
   ifelse(grepl("^d", as.character(x)), as.character(x), paste0("d", x))
 }
 
+# --- Numeric day from timepoint labels like "d42" ---
 tcr_timepoint_days <- function(tp_levels) {
   as.numeric(gsub("[^0-9]", "", tp_levels))
 }
 
+# --- Timepoint names of a patient list sorted by day ---
 tcr_timepoint_levels <- function(patient_list) {
   tp_levels <- names(patient_list)
   tp_days <- tcr_timepoint_days(tp_levels)
   tp_levels[order(tp_days)]
 }
 
+# --- Log10 y scale for frequencies (%) from floor_y to 10 ---
 tcr_y_scale_log <- function(floor_y = 1e-3) {
   scale_y_log10(limits = c(floor_y, 10),
                 breaks = c(1e-3, 1e-2, 1e-1, 1, 10),
                 labels = c("0.001", "0.01", "0.1", "1", "10"))
 }
 
+# --- Shared ggplot theme for clonotype trajectory plots ---
 tcr_theme_trajectory <- function(base_size = 8, aspect.ratio = 0.5) {
   theme_classic(base_size = base_size) +
     theme(axis.text = element_text(size = 7, colour = "black"),
@@ -49,6 +40,7 @@ tcr_theme_trajectory <- function(base_size = 8, aspect.ratio = 0.5) {
           aspect.ratio = aspect.ratio)
 }
 
+# --- Shared ggplot theme for FC rank plots ---
 tcr_theme_rank <- function(base_size = 9, aspect.ratio = 1, legend.position = "right") {
   theme_classic(base_size = base_size) +
     theme(axis.text = element_text(size = 8, colour = "black"),
@@ -64,6 +56,7 @@ tcr_theme_rank <- function(base_size = 9, aspect.ratio = 1, legend.position = "r
           aspect.ratio = aspect.ratio)
 }
 
+# --- Load PBL TCRb data into global lists <output.list.name>(_fc); sets global min_freq ---
 load_data <- function(samples,
                       datapath.pbl,
                       output.list.name,
@@ -123,7 +116,6 @@ load_data <- function(samples,
         tcr_data <- as.data.frame(tcr_data)
         tcr_data <- subset(tcr_data, subset = tcr_data$`Frame-info` == "ok")
         tcr_data$freq_in <- tcr_data$"total.nr-reads" / sum(tcr_data$"total.nr-reads") * 100
-        # Filter by min_freq_in
         tcr_data <- tcr_data %>% filter(freq_in >= min_freq)
         tcr_data$time <- tools::file_path_sans_ext(basename(x))
         tcr_data$`DNA-seq (AA2)` <- paste0(tcr_data$`DNA-seq (AA2)`, "_", tcr_data$`Vsegment-ID`, "_", tcr_data$`Jsegment-ID`)
@@ -137,12 +129,11 @@ load_data <- function(samples,
       files <- files[order(as.numeric(sub(".*d(\\d+)\\.txt$", "\\1", files)))]
       tcr_data_i <- lapply(files, function(x) {
         tcr_data <- read.table(x, sep = "\t", fill = TRUE, na.strings = c("", "NA"))
-        colnames(tcr_data) <- c("CDR3_sequence", "Count", "TRBV",	"TRBJ",	"Frame", "CDR3_aaseq", "CDR3_length",	"UMI", "CDR3_nt_nbr")
+        colnames(tcr_data) <- c("CDR3_sequence", "Count", "TRBV", "TRBJ", "Frame", "CDR3_aaseq", "CDR3_length", "UMI", "CDR3_nt_nbr")
         tcr_data <- as.data.frame(tcr_data)
         tcr_data <- subset(tcr_data, subset = tcr_data$Frame == "IN")
         tcr_data <- tcr_data %>% filter(Count > 1)
         tcr_data$freq_in <- tcr_data$Count / sum(tcr_data$Count) * 100
-        # Filter by min_freq_in
         tcr_data <- tcr_data %>% filter(freq_in >= min_freq)
         tcr_data$time <- tools::file_path_sans_ext(basename(x))
         tcr_data$CDR3_sequence <- paste0(tcr_data$CDR3_sequence, "_", tcr_data$TRBV, "_", tcr_data$TRBJ)
@@ -162,7 +153,6 @@ load_data <- function(samples,
         tcr_data <- as.data.frame(tcr_data)
         tcr_data <- tcr_data %>% filter(readCountAggregated > 10)
         tcr_data$freq_in <- tcr_data$readFractionAggregated / sum(tcr_data$readFractionAggregated) * 100
-        # Filter by min_freq_in
         tcr_data <- tcr_data %>% filter(freq_in >= min_freq)
         tcr_data$time <- tools::file_path_sans_ext(basename(x))
         tcr_data$CDR3_sequence <- paste0(tcr_data$aaSeqCDR3, "_", tcr_data$bestVGene, "_", tcr_data$bestJGene)
@@ -175,9 +165,8 @@ load_data <- function(samples,
       message("🚧 invalid technology; only adaptive, hsd, SEQTR or MiXCR data are supported...")
       return(NULL)
     }
-    # check if data has been loaded
     if (length(tcr_data_i) == 0) {
-      message("🚧 invalid technology or input format; only only adaptive, hsd, SEQTR or MiXCR data are supported...")
+      message("🚧 invalid technology or input format; only adaptive, hsd, SEQTR or MiXCR data are supported...")
       return(NULL)
     }
     names(tcr_data_i) <- tools::file_path_sans_ext(basename(files))
@@ -206,11 +195,12 @@ load_data <- function(samples,
   message("✅ done!")
 }
 
+# --- Load biopsy TCRb data into global list <output.list.name>; sets global min_freq ---
 load_data_biopsy <- function(samples,
                              datapath.biopsy,
                              output.list.name,
                              min_freq = 0.0001,
-                             file_pattern = "TCRB in frame\\.tsv$") {
+                             file_pattern = "TCRB_in_frame\\.tsv$") {
   min_freq <<- min_freq
   if (!exists(output.list.name, envir = .GlobalEnv)) {
     assign(output.list.name, list(), envir = .GlobalEnv)
@@ -262,6 +252,7 @@ load_data_biopsy <- function(samples,
   message("✅ done!")
 }
 
+# --- Trajectories of the top-n clonotypes at a given timepoint ---
 plot_top_trajectories <- function(patient_list, time = 0, top_n = 30, floor_y = 1e-3, clonotype_by = "aminoAcid") {
   if (!clonotype_by %in% c("aminoAcid", "nucleotide")) {
     stop("clonotype_by must be 'aminoAcid' or 'nucleotide'")
@@ -331,6 +322,7 @@ plot_top_trajectories <- function(patient_list, time = 0, top_n = 30, floor_y = 
     tcr_theme_trajectory()
 }
 
+# --- Trajectories of clonotypes first detected at target_time (absent at earlier timepoints) ---
 plot_newly_detected_trajectories <- function(patient_list, target_time = 42, top_n = 30, floor_y = 1e-3, clonotype_by = "aminoAcid", skip_empty = TRUE) {
   if (!clonotype_by %in% c("aminoAcid", "nucleotide")) {
     stop("clonotype_by must be 'aminoAcid' or 'nucleotide'")
@@ -417,6 +409,7 @@ plot_newly_detected_trajectories <- function(patient_list, target_time = 42, top
     tcr_theme_trajectory()
 }
 
+# --- FC vs floor_y of newly detected clonotypes (count >= min_count) at each timepoint ---
 get_newly_detected_fc_all <- function(patient_list, floor_y = 1e-3, clonotype_by = "aminoAcid", min_count = 2) {
   if (!clonotype_by %in% c("aminoAcid", "nucleotide")) {
     stop("clonotype_by must be 'aminoAcid' or 'nucleotide'")
@@ -468,6 +461,7 @@ get_newly_detected_fc_all <- function(patient_list, floor_y = 1e-3, clonotype_by
            floor_y = floor_y)
 }
 
+# --- FC rank plot of new clonotypes with cutoff lines and optional pie per timepoint ---
 plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
                                                 fc_col = "fc_vs_previous_floor",
                                                 point_size = 0.18,
@@ -481,12 +475,10 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
     "knee_rank",
     "n_selected"
   )
-
   missing_cutoff_elements <- setdiff(
     required_cutoff_elements,
     names(cutoff_result)
   )
-
   if (length(missing_cutoff_elements) > 0) {
     stop(
       "cutoff_result is missing: ",
@@ -496,7 +488,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
       )
     )
   }
-
   required_columns <- c(
     "rank",
     "clonotype_by",
@@ -505,12 +496,10 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
     "target_day",
     fc_col
   )
-
   missing_columns <- setdiff(
     required_columns,
     colnames(cutoff_result$data)
   )
-
   if (length(missing_columns) > 0) {
     stop(
       "cutoff_result$data is missing: ",
@@ -520,7 +509,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
       )
     )
   }
-
   if (
     length(cutoff_result$cutoff) != 1 ||
     is.na(cutoff_result$cutoff) ||
@@ -531,7 +519,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
       "cutoff_result$cutoff must be one positive finite value."
     )
   }
-
   plot_data <- cutoff_result$data %>%
     dplyr::mutate(
       significant_fc = .data[[fc_col]] >= cutoff_result$cutoff
@@ -543,7 +530,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
       !is.na(rank),
       is.finite(rank)
     )
-
   if (nrow(plot_data) == 0) {
     stop(
       "No valid positive finite values are available for ",
@@ -551,7 +537,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
       "."
     )
   }
-
   clonotype_by <- unique(plot_data$clonotype_by)[1]
   clonotype_label <- ifelse(
     clonotype_by == "aminoAcid",
@@ -559,17 +544,14 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
     "nt"
   )
   min_count <- unique(plot_data$min_count)[1]
-
   selected_data <- plot_data %>%
     dplyr::filter(significant_fc) %>%
     dplyr::arrange(target_day)
-
   detected_levels <- selected_data %>%
     dplyr::arrange(target_day) %>%
     dplyr::distinct(target_time) %>%
     dplyr::pull(target_time) %>%
     as.character()
-
   selected_data <- selected_data %>%
     dplyr::mutate(
       target_time = factor(
@@ -577,7 +559,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
         levels = detected_levels
       )
     )
-
   shape_lookup <- c(
     d14 = 16,
     d42 = 17,
@@ -591,7 +572,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
     d196 = 6,
     d210 = 0
   )
-
   color_lookup <- c(
     d14 = "#668CF6",
     d42 = "#EC6A2D",
@@ -605,7 +585,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
     d196 = "#4C78A8",
     d210 = "#7A7A7A"
   )
-
   fallback_shapes <- c(
     16,
     17,
@@ -621,7 +600,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
     1,
     2
   )
-
   fallback_colors <- c(
     "#668CF6",
     "#EC6A2D",
@@ -636,27 +614,22 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
     "#7A7A7A",
     "#A06CD5"
   )
-
   missing_levels <- setdiff(
     detected_levels,
     names(shape_lookup)
   )
-
   if (length(missing_levels) > 0) {
     shape_lookup[missing_levels] <- rep(
       fallback_shapes,
       length.out = length(missing_levels)
     )
-
     color_lookup[missing_levels] <- rep(
       fallback_colors,
       length.out = length(missing_levels)
     )
   }
-
   time_shapes <- shape_lookup[detected_levels]
   time_colors <- color_lookup[detected_levels]
-
   p <- ggplot(
     plot_data,
     aes(
@@ -675,7 +648,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
       size = point_size,
       colour = "gray30"
     )
-
   if (shape_by_time && nrow(selected_data) > 0) {
     p <- p +
       geom_point(
@@ -714,7 +686,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
         colour = "black"
       )
   }
-
   p_rank <- p +
     geom_vline(
       xintercept = cutoff_result$knee_rank,
@@ -795,7 +766,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
       ),
       aspect.ratio = 1
     )
-
   if (include_pie && nrow(selected_data) > 0) {
     pie_data <- selected_data %>%
       dplyr::mutate(
@@ -833,17 +803,14 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
         ),
         label_y = rev(seq_len(dplyr::n()))
       )
-
     pie_colors <- color_lookup[
       as.character(
         pie_data$target_time
       )
     ]
-
     missing_pie_colors <- is.na(
       pie_colors
     )
-
     if (any(missing_pie_colors)) {
       pie_colors[missing_pie_colors] <- rep(
         fallback_colors,
@@ -852,11 +819,9 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
         )
       )
     }
-
     names(pie_colors) <- as.character(
       pie_data$target_time
     )
-
     p_pie <- ggplot(
       pie_data,
       aes(
@@ -905,7 +870,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
           5
         )
       )
-
     p_pie_labels <- ggplot(
       pie_data,
       aes(y = label_y)
@@ -953,7 +917,6 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
           5
         )
       )
-
     p_pie_panel <- (
       p_pie /
         p_pie_labels
@@ -964,11 +927,9 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
           0.28
         )
       )
-
     p_pie_panel <- patchwork::wrap_elements(
       full = p_pie_panel
     )
-
     return(
       p_pie_panel +
         p_rank +
@@ -980,11 +941,10 @@ plot_newly_detected_fc_rank_cutoff <- function(cutoff_result,
         )
     )
   }
-
   p_rank
 }
 
-
+# --- Trajectories of expanded clonotypes from expanded_data detected at target_time ---
 plot_expanded_trajectories <- function(patient_list, target_time = 42, expanded_data, top_n = NULL, floor_y = 1e-3, clonotype_by = "aminoAcid", skip_empty = TRUE) {
   if (!clonotype_by %in% c("aminoAcid", "nucleotide")) {
     stop("clonotype_by must be 'aminoAcid' or 'nucleotide'")
@@ -1066,6 +1026,7 @@ plot_expanded_trajectories <- function(patient_list, target_time = 42, expanded_
     tcr_theme_trajectory()
 }
 
+# --- Unique clonotype IDs from a timepoint list or data frame, filtered by min_count and time ---
 get_clonotype_set <- function(x, clonotype_by = "aminoAcid", min_count = 1, time_filter = NULL) {
   if (!clonotype_by %in% c("aminoAcid", "nucleotide")) {
     stop("clonotype_by must be 'aminoAcid' or 'nucleotide'")
@@ -1117,6 +1078,7 @@ get_clonotype_set <- function(x, clonotype_by = "aminoAcid", min_count = 1, time
     pull(clone_id)
 }
 
+# --- PBL and tumor clonotype sets, their overlap and a summary of counts ---
 get_pbl_tumor_overlap <- function(pbl_patient, biopsy_patient, clonotype_by = "aminoAcid", pbl_time = NULL, min_count_pbl = 1, min_count_tumor = 1) {
   pbl_clones <- get_clonotype_set(pbl_patient,
                                   clonotype_by = clonotype_by,
@@ -1142,6 +1104,7 @@ get_pbl_tumor_overlap <- function(pbl_patient, biopsy_patient, clonotype_by = "a
   )
 }
 
+# --- Venn diagram of PBL vs tumor clonotypes (requires ggvenn) ---
 plot_pbl_tumor_venn <- function(overlap_result) {
   if (!requireNamespace("ggvenn", quietly = TRUE)) {
     stop("Package 'ggvenn' is required. Install it with install.packages('ggvenn').")
@@ -1166,6 +1129,7 @@ plot_pbl_tumor_venn <- function(overlap_result) {
           legend.position = "none")
 }
 
+# --- PBL trajectories of the top-n clonotypes shared with the tumor ---
 plot_overlapped_trajectories <- function(patient_list, overlap_result, top_n = 30, floor_y = 1e-3, clonotype_by = NULL, skip_empty = TRUE) {
   if (is.null(clonotype_by)) {
     clonotype_by <- overlap_result$clonotype_by
@@ -1250,6 +1214,7 @@ plot_overlapped_trajectories <- function(patient_list, overlap_result, top_n = 3
     tcr_theme_trajectory()
 }
 
+# --- PBL-tumor overlap plus trajectory and Venn plots combined in one panel ---
 plot_pbl_tumor_overlap_panel <- function(pbl_patient, biopsy_patient, clonotype_by = "aminoAcid", pbl_time = NULL, top_n = 30, floor_y = 1e-3, min_count_pbl = 1, min_count_tumor = 1) {
   overlap_result <- get_pbl_tumor_overlap(pbl_patient,
                                           biopsy_patient,
@@ -1275,6 +1240,7 @@ plot_pbl_tumor_overlap_panel <- function(pbl_patient, biopsy_patient, clonotype_
        plot = plot)
 }
 
+# --- FC rank plot zoomed on clonotypes above the cutoff, shaped and coloured by timepoint ---
 plot_non_neutral_rankplot_zoom <- function(cutoff_result, fc_col = "fc_vs_previous_floor", point_size = 2.4, zoom_factor = 1.15) {
   plot_data <- cutoff_result$data %>%
     mutate(non_neutral = .data[[fc_col]] >= cutoff_result$cutoff)
@@ -1372,6 +1338,7 @@ plot_non_neutral_rankplot_zoom <- function(cutoff_result, fc_col = "fc_vs_previo
           aspect.ratio = 1)
 }
 
+# --- Per-timepoint mean, 95% CI and quantiles of PBL-tumor overlapping clone frequency ---
 summarise_overlap_ci_by_time <- function(patient_list, overlap_result, clonotype_by = NULL, top_n = NULL, include_zeros = TRUE) {
   if (is.null(clonotype_by)) {
     clonotype_by <- overlap_result$clonotype_by
@@ -1445,6 +1412,7 @@ summarise_overlap_ci_by_time <- function(patient_list, overlap_result, clonotype
     arrange(day)
 }
 
+# --- Overlapping clonotypes whose frequency exceeds threshold (%) at least once ---
 summarise_high_freq_overlapping_clones <- function(patient_list, overlap_result, clonotype_by = "aminoAcid", threshold = 0.1) {
   if (!clonotype_by %in% c("aminoAcid", "nucleotide")) {
     stop("clonotype_by must be 'aminoAcid' or 'nucleotide'")
@@ -1497,6 +1465,7 @@ summarise_high_freq_overlapping_clones <- function(patient_list, overlap_result,
   )
 }
 
+# --- Trajectories of tested TCRs from tcr_lib coloured by reactivity (needs V1/V2 columns) ---
 plot_tested_tcr_trajectories <- function(patient_list,
                                          tcr_lib,
                                          reactivity_col,
@@ -1608,6 +1577,7 @@ plot_tested_tcr_trajectories <- function(patient_list,
   p
 }
 
+# --- Rank clonotypes by FC and flag those above a fixed cutoff ---
 apply_newly_detected_fc_cutoff <- function(fc_all, fc_cutoff = 10, fc_col = "fc_vs_previous_floor") {
   plot_data <- fc_all %>%
     filter(!is.na(.data[[fc_col]]),
@@ -1629,6 +1599,7 @@ apply_newly_detected_fc_cutoff <- function(fc_all, fc_cutoff = 10, fc_col = "fc_
        data = plot_data)
 }
 
+# --- One row per TRB chain from single-cell TCR data with CDR3B and V/J clonotype ---
 make_sc_trb_long <- function(sc_tcr) {
   sc_tcr %>%
     mutate(cell_row = row_number()) %>%
@@ -1647,12 +1618,14 @@ make_sc_trb_long <- function(sc_tcr) {
     distinct(cell_row, barcode, sample, CDR3B, v_gene, j_gene, trb_clonotype, .keep_all = TRUE)
 }
 
+# --- Collapse unique non-empty values into one " | "-separated string (NA if none) ---
 collapse_uniq <- function(x) {
   x <- unique(na.omit(as.character(x)))
   x <- x[x != "" & x != "NA"]
   if (length(x) == 0) NA_character_ else paste(x, collapse = " | ")
 }
 
+# --- Bulk FC between two timepoints for single-cell CDR3B clonotypes, ranked by absolute FC ---
 get_sc_reference_fc_rank <- function(patient_list,
                                      single_cell_clonotypes,
                                      floor_y = 1e-3,
@@ -1725,6 +1698,7 @@ get_sc_reference_fc_rank <- function(patient_list,
   fc_rank
 }
 
+# --- FC rank plot of single-cell clonotypes highlighting TCRlib reactive (Yes) ones ---
 plot_sc_clonotype_fc_rank <- function(fc_rank,
                                       point_size = 1.8,
                                       label_size = 2.3,
@@ -1739,17 +1713,14 @@ plot_sc_clonotype_fc_rank <- function(fc_rank,
       highlight_yes = str_detect(TCRlib_reactivity_plot, regex("(^| \\| )Yes($| \\| )")),
       above_fc_cutoff = FC_abs >= fc_cutoff
     )
-  
   label_data <- plot_data %>%
     filter(highlight_yes) %>%
     arrange(desc(FC_abs))
-  
   cutoff_rank <- if (any(plot_data$above_fc_cutoff, na.rm = TRUE)) {
     max(plot_data$rank[plot_data$above_fc_cutoff], na.rm = TRUE)
   } else {
     NA_real_
   }
-  
   p <- ggplot(plot_data, aes(x = rank, y = FC_abs)) +
     geom_line(linewidth = 0.15, colour = "gray35") +
     geom_point(data = plot_data %>% filter(!highlight_yes),
@@ -1815,6 +1786,7 @@ plot_sc_clonotype_fc_rank <- function(fc_rank,
   p
 }
 
+# --- Colours for simplified TCRlib selection criteria (also used by the Rmd) ---
 criteria_colors <- c(
   "None" = "gray70",
   "Frequent" = "#9ECAE1",
@@ -1827,28 +1799,20 @@ criteria_colors <- c(
   "PD1 | Tumor | Expanding" = "#3F007D"
 )
 
+# --- FC rank plot of single-cell clonotypes by TCRlib criteria (uses criteria_colors) ---
 plot_sc_clonotype_fc_rank_tcrlib_criteria <- function(fc_rank,
                                                       tcr_lib_annotated,
                                                       fc_cutoff = 10,
                                                       point_size = 1.8,
                                                       label_size = 2.3,
                                                       label_tcrlib = FALSE) {
-  collapse_uniq <- function(x) {
-    x <- unique(na.omit(as.character(x)))
-    x <- x[x != "" & x != "NA"]
-    if (length(x) == 0) NA_character_ else paste(x, collapse = " | ")
-  }
-  
   criteria_levels <- names(criteria_colors)
-  
   tcr_lib_annotated <- tcr_lib_annotated %>%
     as_tibble()
-  
   if (!"CDR3B" %in% colnames(tcr_lib_annotated)) {
     tcr_lib_annotated <- tcr_lib_annotated %>%
       mutate(CDR3B = stringr::str_extract(V1, "^[^_]+"))
   }
-  
   criteria_by_CDR3B <- tcr_lib_annotated %>%
     filter(!is.na(CDR3B), CDR3B != "",
            !is.na(V2), V2 != "") %>%
@@ -1881,7 +1845,6 @@ plot_sc_clonotype_fc_rank_tcrlib_criteria <- function(fc_rank,
       )
     ) %>%
     select(CDR3B, TCRlib_ID_plot, criteria_simplified)
-  
   plot_data <- fc_rank %>%
     mutate(CDR3B = as.character(CDR3B)) %>%
     left_join(criteria_by_CDR3B, by = "CDR3B") %>%
@@ -1900,20 +1863,16 @@ plot_sc_clonotype_fc_rank_tcrlib_criteria <- function(fc_rank,
       criteria_simplified = factor(criteria_simplified, levels = criteria_levels),
       above_fc_cutoff = FC_abs >= fc_cutoff
     )
-  
   label_data <- plot_data %>%
     filter(in_TCRlib_plot, label_tcrlib) %>%
     arrange(desc(FC_abs))
-  
   cutoff_rank <- plot_data %>%
     filter(above_fc_cutoff) %>%
     summarise(cutoff_rank = max(rank, na.rm = TRUE)) %>%
     pull(cutoff_rank)
-  
   if (length(cutoff_rank) == 0 || is.infinite(cutoff_rank)) {
     cutoff_rank <- NA_real_
   }
-  
   ggplot(plot_data, aes(x = rank, y = FC_abs)) +
     geom_line(linewidth = 0.15, colour = "gray35") +
     geom_point(data = plot_data %>% filter(!in_TCRlib_plot, !above_fc_cutoff),
@@ -1968,12 +1927,16 @@ plot_sc_clonotype_fc_rank_tcrlib_criteria <- function(fc_rank,
                         " | TCRlib CDR3B = ", sum(plot_data$in_TCRlib_plot, na.rm = TRUE))) +
     tcr_theme_rank()
 }
+
+# --- Faceted trajectories of annotated clonotypes; saves PNG to plot_dir and TSV to table_dir ---
 plot_annotated_bulk_trajectories <- function(patient_list,
                                              annotation,
                                              time,
                                              manual_colors,
                                              compartment,
-                                             output_dir,
+                                             plot_dir,
+                                             table_dir,
+                                             output_prefix = NULL,
                                              floor_y = 1e-3,
                                              ncol = 7,
                                              width = 16,
@@ -2275,18 +2238,25 @@ plot_annotated_bulk_trajectories <- function(patient_list,
       )
     )
   dir.create(
-    output_dir,
+    plot_dir,
     recursive = TRUE,
     showWarnings = FALSE
   )
-  output_prefix <- paste0(
-    "bulk_",
-    time
+  dir.create(
+    table_dir,
+    recursive = TRUE,
+    showWarnings = FALSE
   )
+  if (is.null(output_prefix)) {
+    output_prefix <- paste0(
+      "bulk_",
+      time
+    )
+  }
   write.table(
     plot_data,
     file = file.path(
-      output_dir,
+      table_dir,
       paste0(output_prefix, ".tsv")
     ),
     sep = "\t",
@@ -2295,7 +2265,7 @@ plot_annotated_bulk_trajectories <- function(patient_list,
   )
   ggsave(
     filename = file.path(
-      output_dir,
+      plot_dir,
       paste0(output_prefix, ".png")
     ),
     plot = p,

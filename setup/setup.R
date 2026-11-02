@@ -7,7 +7,7 @@ project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
 datapath_load <- file.path(project_dir, "data")
 aux_dir <- file.path(datapath_load, "aux")  # auxiliary input tables (TCR library, repertoires, databases, signatures)
 results_dir <- file.path(project_dir, "results")
-datapath <- results_dir
+datapath <- file.path(results_dir, "single-cell")
 if (!dir.exists(datapath_load)) {
   stop("Data directory not found: ", datapath_load)
 }
@@ -30,7 +30,7 @@ options(future.globals.maxSize = 10 * 1024^3)
 SEED <- 123
 PDFCLUSTER_CD4_SEED <- 123
 PDFCLUSTER_CD8A_SEED <- 532
-REPRO_NCORES <- 40
+REPRO_NCORES <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", "25"))  # threads for ProjecTILs/UCell (results do not depend on it)
 RNGkind("L'Ecuyer-CMRG")
 set.seed(SEED)
 

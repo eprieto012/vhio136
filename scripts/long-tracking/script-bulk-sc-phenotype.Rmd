@@ -1,0 +1,89 @@
+---
+title: "script-bulk-sc-phenotype"
+author: "Endika Prieto-Fernández"
+date: "2026-10-30"
+output: html_document
+---
+
+# setup
+
+Bulk TCRβ trajectories of the PBLs coloured by the single-cell phenotype of each clonotype. Runs after the
+single-cell analysis: it reads the per-timepoint phenotype tables written by `m03-plots-analyses.Rmd`.
+
+```{r, message=FALSE, warning=FALSE}
+suppressPackageStartupMessages({
+  library(data.table)
+  library(ggplot2)
+  library(patchwork)
+  library(purrr)
+  library(readr)
+  library(scales)
+  library(stringr)
+  library(tibble)
+  library(tidyr)
+  library(dplyr)
+  library(ggrepel)
+  library(grid)
+  library(readxl)
+})
+setup_dir <- normalizePath("../setup", mustWork = TRUE)
+project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
+source(file.path(setup_dir, "functions-long-tracking.R"))
+source(file.path(setup_dir, "colors.R"))
+```
+
+# data
+
+```{r, warning=FALSE}
+load_data(samples = "blood",
+          datapath.pbl = file.path(project_dir, "data", "bulk-tcrb"),
+          output.list.name = "pbl",
+          technology = "adaptive",
+          min_freq = 1e-3
+)
+# --- Loaders name elements after their folder; the script uses the patient name ---
+names(pbl) <- "RIO136"
+```
+
+# traj x pheno
+
+```{r}
+# --- Parameters ---
+patient <- "RIO136"
+# --- CD8+ non-naive integrated object, the only compartment annotated by m03 ---
+bulk_comp <- "cd8_int_nn"
+times <- c("pre", "post1", "post2", "post6")
+# --- Tables from m03-plots-analyses.Rmd; manual_colors from setup/colors.R ---
+annot_dir <- file.path(project_dir, "results", "single-cell", "integrated",
+                       "phenotype-trajectories", "tables")
+out_dir <- file.path(project_dir, "results", "long-tracking", "phenotype-trajectories")
+plot_dir <- file.path(out_dir, "plots")
+table_dir <- file.path(out_dir, "tables")
+# --- Bulk trajectories coloured by single-cell phenotype, one per timepoint ---
+bulk_trajectories <- list()
+for (time in times) {
+  annotation <- read.delim(
+    file.path(
+      annot_dir,
+      paste0("Single-cell_", bulk_comp, "_", time, ".tsv")
+    ),
+    sep = "\t",
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  bulk_result <- plot_annotated_bulk_trajectories(
+    patient_list = pbl[[patient]],
+    annotation = annotation,
+    time = time,
+    manual_colors = manual_colors,
+    compartment = bulk_comp,
+    plot_dir = plot_dir,
+    table_dir = table_dir,
+    output_prefix = paste0("Deep_sequencing_", bulk_comp, "_", time),
+    floor_y = 1e-3
+  )
+  bulk_trajectories[[time]] <- bulk_result$data
+  print(bulk_result$plot)
+}
+rm(time, annotation, bulk_result)
+```
