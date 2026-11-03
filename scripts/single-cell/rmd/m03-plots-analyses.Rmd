@@ -1,6 +1,6 @@
 ---
 title: "m03-plots-analyses"
-author: "Endika Prieto"
+author: "Endika Prieto <endikaprieto@vhio.net>"
 date: "2026-07-10"
 output: html_document
 ---
@@ -29,15 +29,8 @@ Tumor-reactive TCR colors
 
 ```{r}
 shape_pool <- c(0, 1, 2, 5, 6, 7, 3, 4, 8, 9, 10, 11, 12, 13, 14, 21, 22, 23, 24, 25)
-colors_tcr_tbl <- read.table(
-  file.path(aux_dir, "tcr-library", "tcr_library_colors.txt"),
-  header = FALSE,
-  skip = 1,
-  stringsAsFactors = FALSE,
-  col.names = c("rn", "TCR.ID", "Colors", "emergence")
-) %>%
+colors_tcr_tbl <- reactive_tcr_colors %>%
   dplyr::mutate(
-    TCR.ID = as.character(TCR.ID),
     emergence = factor(emergence, levels = c("d0", "d14", "d42"))
   )
 tcr_ids <- unique(colors_tcr_tbl$TCR.ID)
@@ -51,7 +44,7 @@ if (length(tcr_ids) > length(shape_pool)) {
 }
 shape_map <- setNames(shape_pool[seq_along(tcr_ids)], tcr_ids)
 tcr_lib <- read.table(
-  file.path(aux_dir, "tcr-library", "tcr_library.txt"),
+  file.path(resources_dir, "tcr-library", "TCR-lib-VHIO136-library-TCRb-clono.txt"),
   col.names = c("TCRb", "TCR.ID"),
   stringsAsFactors = FALSE
 ) %>%
@@ -70,8 +63,7 @@ true_hits <- colors_tcr_tbl %>%
   dplyr::left_join(tcr_lib, by = "TCR.ID") %>%
   dplyr::mutate(
     cdr3 = sub("_.*", "", TCRb)
-  ) %>%
-  dplyr::select(-rn)
+  )
 tcr_color_map <- true_hits %>%
   dplyr::distinct(TCR.ID, Colors) %>%
   tibble::deframe()
@@ -892,24 +884,18 @@ print(p)
 Longitudinal CDR-3β repertoires of tumor-reactive PBLs
 
 ```{r}
-path <- file.path(datapath_load, "bulk-tcrb", "pbl_trb_timecourse_vhio136.tsv")
-data_raw <- read.table(path, sep = "\t", header = TRUE) %>%
-  dplyr::mutate(
-    TRBV = stringr::str_extract(nucleotide, "TCRBV[0-9]+-0?[0-9]"),
-    TRBV = gsub("-0", "-", TRBV),
-    TRBV = gsub("TCRBV0", "TCRBV", TRBV),
-    TRBV = gsub("TCRBV", "TRBV", TRBV),
-    TRBJ = stringr::str_extract(nucleotide, "TCRBJ[0-9]+-0?[0-9]"),
-    TRBJ = gsub("-0", "-", TRBJ),
-    TRBJ = gsub("TCRBJ0", "TCRBJ", TRBJ),
-    TRBJ = gsub("TCRBJ", "TRBJ", TRBJ)
-  ) %>%
-  dplyr::mutate(
-    TCRb = paste0(aminoAcid, "_", TRBV, "_", TRBJ),
-    cdr3 = sub("_.*", "", TCRb)
-  )
-data_raw <- data_raw %>%
-  dplyr::select(cdr3, time, freq_in)
+# --- In-frame PBL clonotypes per timepoint (one row per nucleotide sequence); freq_in = % of the in-frame templates ---
+blood_dir <- file.path(datapath_load, "bulk-tcrb", "blood")
+data_raw <- lapply(list.files(blood_dir, pattern = "\\.tsv$", full.names = TRUE), function(f) {
+  read.delim(f, check.names = FALSE, stringsAsFactors = FALSE) %>%
+    dplyr::filter(sequenceStatus == "In") %>%
+    dplyr::transmute(
+      cdr3 = aminoAcid,
+      time = sub("\\.tsv$", "", basename(f)),
+      freq_in = `count (templates/reads)` / sum(`count (templates/reads)`) * 100
+    )
+}) %>%
+  dplyr::bind_rows()
 emergence_levels <- c("d0", "d14", "d42")
 bad_values <- c("", "NA", "<NA>")
 if (!exists("true_hits") || !all(c("cdr3", "TCR.ID", "Colors", "emergence") %in% colnames(true_hits))) {

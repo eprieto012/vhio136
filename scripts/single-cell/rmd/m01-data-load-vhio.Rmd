@@ -447,7 +447,7 @@ rm(doublet_plots)
 Important: Keep those clonotypes included in the TCR library.
 
 ```{r}
-tcr_lib_clonotypes <- readRDS(file.path(aux_dir, "tcr-library", "tcr_library_clonotypes_pre_post2.rds")) %>%
+tcr_lib_clonotypes <- readRDS(file.path(resources_dir, "tcr-library", "TCR-lib-VHIO136-clonotypes-pre-post2.rds")) %>%
   as.data.frame() %>%
   mutate(
     across(c(v_gene, j_gene), ~ gsub("\\*[0-9]+", "", .))

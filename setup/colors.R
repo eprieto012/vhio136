@@ -28,6 +28,16 @@ reactivity_colors <- c(
   "TCR library tested" = "gray60",
   "NA" = "gray80"
 )
+# Reactive TCRs of the library: colour and emergence timepoint (first PBL timepoint where it is detected) (m03)
+reactive_tcr_colors <- data.frame(
+  TCR.ID = c("ID.012", "ID.016", "ID.023", "ID.024", "ID.031", "ID.060", "ID.083", "ID.094", "ID.143", "ID.146",
+             "ID.159", "ID.187", "ID.347", "ID.531", "ID.572", "ID.618", "ID.640", "ID.145", "ID.185", "ID.746"),
+  Colors = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#A65628", "#F781BF", "#999999", "#00A087", "#3C5488",
+             "#E64B35", "#7E6148", "#00BFC4", "#B09C85", "#C77CFF", "#F0E442", "#8B1A1A", "#1B9E77", "#D95F02", "#7570B3"),
+  emergence = c("d42", "d42", "d42", "d14", "d14", "d42", "d42", "d14", "d42", "d42",
+                "d42", "d42", "d0", "d42", "d42", "d0", "d0", "d42", "d42", "d0"),
+  stringsAsFactors = FALSE
+)
 manual_colors <- c(
   "CD8 TCM" = "#0B6F61",
   "CD8 LEF1+ ZNF683+" = "#84D8C5",

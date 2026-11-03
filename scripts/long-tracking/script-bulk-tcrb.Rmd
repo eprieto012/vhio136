@@ -1,6 +1,6 @@
 ---
 title: "script-bulk-tcrb"
-author: "Endika Prieto-Fernández"
+author: "Endika Prieto <endikaprieto@vhio.net>"
 date: "2026-07-01"
 output: html_document
 ---
@@ -371,7 +371,7 @@ Add TCR library information.
 
 ```{r}
 # --- Load the TCR library ---
-tcr_lib_file <- file.path(project_dir, "data", "aux", "tcr-library", "tcr_library.txt")
+tcr_lib_file <- file.path(project_dir, "resources", "tcr-library", "TCR-lib-VHIO136-library-TCRb-clono.txt")
 if (!file.exists(tcr_lib_file)) {
   stop("Missing TCR library file: ", tcr_lib_file)
 }
@@ -1654,7 +1654,7 @@ imgt_gene <- function(x, prefix) {
 viral_floor <- 1e-3
 # --- VDJdb viral specificities (non-human epitope species) ---
 vdjdb <- read.delim(
-  file.path(project_dir, "data", "aux", "viral-databases", "vdjdb", "vdjdb_vhio136_trb.tsv"),
+  file.path(project_dir, "resources", "viral-databases", "vdjdb", "vdjdb-vhio136-trb.tsv"),
   check.names = FALSE, stringsAsFactors = FALSE
 ) %>%
   filter(`Epitope species` != "HomoSapiens") %>%
@@ -1766,7 +1766,7 @@ tcr_lib.annotated.save <- tcr_lib.annotated %>%
   ) %>%
   dplyr::select(-TCRlib_reactivity, -Traj_reactivity)
 # --- Save the table ---
-tcr_lib_annotated_file <- file.path(project_dir, "data", "aux", "tcr-library", "tcr_library_annotated.txt")
+tcr_lib_annotated_file <- file.path(project_dir, "resources", "tcr-library", "TCR-lib-VHIO136-annotated.txt")
 dir.create(
   dirname(tcr_lib_annotated_file),
   recursive = TRUE,

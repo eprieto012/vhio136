@@ -1,6 +1,6 @@
 ---
 title: "script-bulk-sc-phenotype"
-author: "Endika Prieto-Fernández"
+author: "Endika Prieto <endikaprieto@vhio.net>"
 date: "2026-10-30"
 output: html_document
 ---

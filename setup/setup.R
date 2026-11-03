@@ -5,7 +5,7 @@ if (!exists("setup_dir", inherits = TRUE) || !dir.exists(setup_dir)) {
 setup_dir <- normalizePath(setup_dir, mustWork = TRUE)
 project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
 datapath_load <- file.path(project_dir, "data")
-aux_dir <- file.path(datapath_load, "aux")  # auxiliary input tables (TCR library, repertoires, databases, signatures)
+resources_dir <- file.path(project_dir, "resources")  # reference tables (TCR library, viral databases, signatures, Yossef reactive TCRs)
 results_dir <- file.path(project_dir, "results")
 datapath <- file.path(results_dir, "single-cell")
 if (!dir.exists(datapath_load)) {

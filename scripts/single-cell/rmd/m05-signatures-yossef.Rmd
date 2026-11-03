@@ -32,7 +32,7 @@ iTAG signatures (m04-signatures.Rmd) + TRTPBL + NeoTCRPBL, scored as in m04.
 
 ```{r}
 signatures <- readRDS(file.path(sig_root, "vhio136", compartment, "markers", "itag_signatures.rds"))
-sigs <- fread(file.path(aux_dir, "signatures", "published_signatures.tsv"), header = TRUE)
+sigs <- fread(file.path(resources_dir, "signatures", "published-signatures.tsv"), header = TRUE)
 sigs <- lapply(sigs, function(x) unique(na.omit(x)))
 signatures$TRTPBL <- sigs$TRTPBL
 signatures$Yossef_NeoTCR_PBL <- sigs$Yossef_NeoTCR_PBL

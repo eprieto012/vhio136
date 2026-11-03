@@ -26,8 +26,8 @@ plot_list <- list()
 
 # hits
 
-Three panels: the relevant (RIO136) library, the irrelevant (RIO008) library used as a specificity
-control, and the B-cell positive control.
+Three panels, one per target of the library: the autologous VHIO-136 tumor cell line (relevant), an irrelevant
+TCL used as a specificity control (NCI3998 in screen 1, VHIO-008 TCL in screen 2), and the VHIO-008 B cells (positive control).
 
 A TCR called as a hit in all three comparisons (relevant, irrelevant and B-cell) is enriched regardless
 of the target, so it is not antigen-specific: the highlighted hits are those called in `relevant` minus

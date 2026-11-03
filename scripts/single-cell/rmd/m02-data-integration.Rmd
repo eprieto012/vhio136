@@ -148,7 +148,7 @@ message("A total of ", length(unique(unlist(strsplit(na.omit(obj@meta.data$id), 
 
 ```{r}
 # --- Load TCR library metadata ---
-tcr_lib <- fread(file.path(aux_dir, "tcr-library", "tcr_library_annotated.txt"))
+tcr_lib <- fread(file.path(resources_dir, "tcr-library", "TCR-lib-VHIO136-annotated.txt"))
 tcr_lib_dt <- as.data.table(copy(tcr_lib))
 if (!"criteria_simplified" %in% colnames(tcr_lib_dt) && "tag_combination_controls" %in% colnames(tcr_lib_dt)) {
   tcr_lib_dt[, criteria_simplified := tag_combination_controls]
@@ -422,7 +422,7 @@ Epitope species: "CMV", "EBV", "HCV", "HIV-1", "HomoSapiens", "InfluenzaA", "SAR
 ```{r}
 obj@meta.data$cell_id <- rownames(obj@meta.data)
 # --- TCRa ---
-tra_vdjdb_orig <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_tra.tsv"), header = T)
+tra_vdjdb_orig <- fread(file.path(resources_dir, "viral-databases", "vdjdb", "vdjdb-vhio136-tra.tsv"), header = T)
 tra_vdjdb <- tra_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(tra_vdjdb) <- c("tra", "v_gene", "j_gene", "epitope_gene", "epitope_species")
 tra_vdjdb$v_gene <- clean_multi_gene(tra_vdjdb$v_gene)
@@ -436,7 +436,7 @@ tra_vdjdb <- tra_vdjdb %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "VDJdb_TRA")
 # --- TCRb ---
-trb_vdjdb_orig <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_trb.tsv"), header = T)
+trb_vdjdb_orig <- fread(file.path(resources_dir, "viral-databases", "vdjdb", "vdjdb-vhio136-trb.tsv"), header = T)
 trb_vdjdb <- trb_vdjdb_orig %>% select(CDR3, V, J, `Epitope gene`, `Epitope species`)
 colnames(trb_vdjdb) <- c("trb", "v_gene", "j_gene", "epitope_gene", "epitope_species")
 trb_vdjdb$v_gene <- clean_multi_gene(trb_vdjdb$v_gene)
@@ -450,7 +450,7 @@ trb_vdjdb <- trb_vdjdb %>%
   select(cell_id, epitope_species, epitope_gene) %>%
   mutate(match = "VDJdb_TRB")
 # --- Paired TCR: VDJdb "CDR3 paired only" export, TRA+TRB rebuilt and matched to cells ---
-vdjdb_paired <- fread(file.path(aux_dir, "viral-databases", "vdjdb", "vdjdb_vhio136_paired.tsv"), header = T)
+vdjdb_paired <- fread(file.path(resources_dir, "viral-databases", "vdjdb", "vdjdb-vhio136-paired.tsv"), header = T)
 complex.id <- unique(vdjdb_paired$complex.id)
 vdjdb_paired_tcr <- list()
 for (i in complex.id) {
@@ -492,7 +492,7 @@ HLA-matched viral TCR https://iedb.org/
 
 ```{r, warning=FALSE, message=FALSE}
 # --- Whole IEDB export, filtered to HLA-matched entries (TRB or TRA+TRB) ---
-tcr_iedb_data <- readxl::read_excel(file.path(aux_dir, "viral-databases", "iedb", "iedb_receptor_export_2024-04-16.xlsx"))
+tcr_iedb_data <- readxl::read_excel(file.path(resources_dir, "viral-databases", "iedb", "iedb-receptor-export-2024-04-16.xlsx"))
 tcr_iedb_data <- as.data.frame(tcr_iedb_data)
 tcr_iedb_data <- tcr_iedb_data %>% select(c("MHC Allele Names", "Type...13", "CDR3 Curated...24", "Type...42", "CDR3 Curated...53", "Source Organism", "Source Molecule"))
 tcr_iedb_data <- subset(tcr_iedb_data, tcr_iedb_data$`Source Organism` %in% c("Human herpesvirus 5 (Human cytomegalovirus)",
@@ -581,10 +581,10 @@ rm(idx)
 
 # signatures
 
-Cell-cycle scores (scGate G1/S and G2/M) + published signatures in `published_signatures.tsv` (Oliveira, Lowery, Yossef, Hanada, TRTPBL), scored with UCell on RNA.
+Cell-cycle scores (scGate G1/S and G2/M) + published signatures in `published-signatures.tsv` (Oliveira, Lowery, Yossef, Hanada, TRTPBL), scored with UCell on RNA.
 
 ```{r}
-signatures <- fread(file.path(aux_dir, "signatures", "published_signatures.tsv"), header = TRUE)
+signatures <- fread(file.path(resources_dir, "signatures", "published-signatures.tsv"), header = TRUE)
 sigs <- lapply(signatures, function(x) unique(na.omit(x)))
 sigs <- c(
   sigs,

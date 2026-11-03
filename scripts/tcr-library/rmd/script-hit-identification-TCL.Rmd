@@ -23,7 +23,7 @@ suppressPackageStartupMessages({
 })
 setup_dir <- normalizePath("../setup", mustWork = TRUE)
 project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
-aux_dir <- file.path(project_dir, "data", "aux", "tcr-library")
+tcrlib_dir <- file.path(project_dir, "resources", "tcr-library")
 results_dir <- file.path(project_dir, "results", "tcr-library")
 # --- Counts in results/tcr-library/<screen>/<sample>/ unless TCRLIB_COUNTS_DIR is set ---
 counts_dir <- Sys.getenv("TCRLIB_COUNTS_DIR", unset = results_dir)
@@ -36,7 +36,7 @@ the IDs used throughout this analysis (`analysis_id`) are *not* the IDs of the F
 so the counts are renamed before being joined.
 
 ```{r}
-samples_list <- fread(file.path(aux_dir, "tcr_library_screen_samples.tsv")) %>%
+samples_list <- fread(file.path(tcrlib_dir, "TCR-lib-VHIO136-screen-samples.tsv")) %>%
   mutate(counts_file = file.path(counts_dir, screen, sample, paste0(sample, ".counts.txt")))
 missing_counts <- samples_list$counts_file[!file.exists(samples_list$counts_file)]
 if (length(missing_counts) > 0) {
@@ -69,10 +69,11 @@ rm(finalCounts, counts)
 # comparisons
 
 Donor 1 (PDL6.2) and donor 2 (PDL5.9) are the replicates of the edgeR analysis; for the relevant and
-irrelevant libraries each donor was screened twice (screen 1 and screen 2), giving 4 replicates per group.
+irrelevant targets each donor was screened twice (screen 1 and screen 2), giving 4 replicates per group.
 
-- `relevant` / `irrelevant`: 4-1BB+ vs 4-1BB- of the RIO136 (relevant) and RIO008 (irrelevant) libraries.
-- `positive`: B cells, the positive control of the assay.
+- `relevant` / `irrelevant`: 4-1BB+ vs 4-1BB- after co-culture with the autologous VHIO-136 tumor cell line (relevant)
+  or an irrelevant TCL (specificity control: NCI3998 in screen 1, VHIO-008 TCL in screen 2).
+- `positive`: B cells of patient VHIO-008, HLA-compatible with the positive-control TCRs of the library (positive control of the assay).
 - `*_bulk`: the same 4-1BB+ fractions against the unsorted bulk.
 
 `positive_bulk` is the only comparison that keeps constructs with zero counts in some sample.

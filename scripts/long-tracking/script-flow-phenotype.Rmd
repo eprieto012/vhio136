@@ -28,7 +28,7 @@ suppressPackageStartupMessages({
 })
 setup_dir <- normalizePath("../setup", mustWork = TRUE)
 project_dir <- normalizePath(file.path(setup_dir, ".."), mustWork = TRUE)
-flow_dir <- file.path(project_dir, "data", "flow-phenotype")
+flow_dir <- file.path(project_dir, "resources", "flow-phenotype")
 results_dir <- file.path(project_dir, "results", "long-tracking", "phenotype")
 source(file.path(setup_dir, "functions-flow-phenotype.R"))
 # --- Figures were drawn with Arial; default sans font where it is missing ---
@@ -38,9 +38,9 @@ plot_font <- if ("Arial" %in% systemfonts::system_fonts()$family) "Arial" else "
 # load
 
 ```{r}
-pd1.levels <- read.csv(file.path(flow_dir, "RIO-136-PD1-cat.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
-panel.1 <- read.csv(file.path(flow_dir, "RIO-136-CD4-CD8-panel1.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
-panel.2 <- read.csv(file.path(flow_dir, "RIO-136-CD4-CD8-panel2.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
+pd1.levels <- read.csv(file.path(flow_dir, "VHIO136-PD1-cat.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
+panel.1 <- read.csv(file.path(flow_dir, "VHIO136-CD4-CD8-panel1.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
+panel.2 <- read.csv(file.path(flow_dir, "VHIO136-CD4-CD8-panel2.csv"), sep = ";", fileEncoding = "UTF-8-BOM")
 data <- rbind(panel.1, panel.2)
 data.cd4 <- data %>% filter(CD4_CD8 == "CD4")
 data.cd8 <- data %>% filter(CD4_CD8 == "CD8")
@@ -82,10 +82,10 @@ Calculate the fraction of each PD1 category within the total marker-positive pop
 
 ```{r, message=FALSE, warning=FALSE}
 day_vec <- c(14, 42, 56, 84, 112, 140, 0)
-CD4pan1 <- read_panel("Reanalysis-CD4pan1.csv", day_vec, "CD4", dir = flow_dir)
-CD4pan2 <- read_panel("Reanalysis-CD4pan2.csv", day_vec, "CD4", dir = flow_dir)
-CD8pan1 <- read_panel("Reanalysis-CD8pan1.csv", day_vec, "CD8", dir = flow_dir)
-CD8pan2 <- read_panel("Reanalysis-CD8pan2.csv", day_vec, "CD8", dir = flow_dir)
+CD4pan1 <- read_panel("VHIO136-reanalysis-CD4pan1.csv", day_vec, "CD4", dir = flow_dir)
+CD4pan2 <- read_panel("VHIO136-reanalysis-CD4pan2.csv", day_vec, "CD4", dir = flow_dir)
+CD8pan1 <- read_panel("VHIO136-reanalysis-CD8pan1.csv", day_vec, "CD8", dir = flow_dir)
+CD8pan2 <- read_panel("VHIO136-reanalysis-CD8pan2.csv", day_vec, "CD8", dir = flow_dir)
 CD4pan1 <- rename_panel_base(CD4pan1, "CD4", 1)
 CD4pan2 <- rename_panel_base(CD4pan2, "CD4", 2)
 CD8pan1 <- rename_panel_base(CD8pan1, "CD8", 1)

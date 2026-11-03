@@ -10,7 +10,7 @@
 #
 # 1. Create the tcrlib_hits environment and point ENV_HITS to it (README, section 1).
 # 2. Place the FASTQs as $RAW_DIR/<screen>/<sample>_{1,2}.fastq.gz, with <screen> and <sample> as in
-#    data/aux/tcr-library/tcr_library_screen_samples.tsv (the original NAS layout, $RAW_DIR/<fastq_dir>/, also works).
+#    resources/tcr-library/TCR-lib-VHIO136-screen-samples.tsv (the original NAS layout, $RAW_DIR/<fastq_dir>/, also works).
 # 3. From the project root (vhio136/), submit one SLURM array task per sample of a screen:
 #      export RAW_DIR=/path/to/fastq ENV_HITS=/path/to/envs/tcrlib_hits
 #      scripts/tcr-library/hits/run-hits.sh screen-1    # 14 samples, sequenced 2022
@@ -31,8 +31,8 @@ PARTITION="${PARTITION:-long}"
 CPUS="${CPUS:-16}"
 MEM="${MEM:-32gb}"
 WALLTIME="${WALLTIME:-2-00:00:00}"
-SAMPLES="$REPO/data/aux/tcr-library/tcr_library_screen_samples.tsv"
-LIB="$REPO/data/aux/tcr-library/TCR_lib_RIO136_AAV.fasta"
+SAMPLES="$REPO/resources/tcr-library/TCR-lib-VHIO136-screen-samples.tsv"
+LIB="$REPO/resources/tcr-library/TCR-lib-VHIO136-AAV.fasta"
 export PATH="$ENV_HITS/bin:$PATH"
 
 if [[ $# -ne 1 ]]; then

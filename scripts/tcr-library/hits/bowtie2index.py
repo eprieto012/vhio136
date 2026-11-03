@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Author : Pierre Levy <levy.pierre@yahoo.fr>
+Author : Pierre Levy <plevy@vhio.net>
 Date   : 2022-05-18
 Purpose: Bowtie2 indexing for TCR lib
 """

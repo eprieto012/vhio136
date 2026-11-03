@@ -1,6 +1,6 @@
 ---
 title: "m04-signatures"
-author: "Endika Prieto"
+author: "Endika Prieto <endikaprieto@vhio.net>"
 date: "2026-02-04"
 output: html_document
 ---

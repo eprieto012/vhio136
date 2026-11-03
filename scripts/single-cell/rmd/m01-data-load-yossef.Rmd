@@ -345,7 +345,7 @@ rm(sce_obj)
 Doublet removal. Doublets with a reactive TCR (same patient + reactive TRA and TRB, as in the reactivity annotation below) are kept.
 
 ```{r}
-tcr_reactivity <- fread(file.path(aux_dir, "yossef-cohort", "yossef_reactive_tcrs.tsv")) %>% as.data.frame()
+tcr_reactivity <- fread(file.path(resources_dir, "yossef-cohort", "yossef-reactive-tcrs.tsv")) %>% as.data.frame()
 is_reactive <- !is.na(match_reactive_tcr_yossef(sub("_.*", "", object$tag), object$chains, object$cdr3, tcr_reactivity))
 table(doublet = object$scDblFinder.class, reactive = is_reactive)
 keep_cells <- colnames(object)[object$scDblFinder.class != "doublet" | is_reactive]
@@ -423,7 +423,7 @@ rm(chains_data)
 Reactive T cells by Yossef et al. A cell is reactive when it carries both the reactive TRA and TRB CDR3 of a TCR reported for its patient; extra chains (e.g. a second TRA) are allowed. Cells with only one of the two chains stay as "Other". `clonotype` is the reactive TCR (TRA;TRB) for reactive cells and `cdr3` otherwise, so that cells of one reactive clone with an extra chain count as a single clonotype in m05.
 
 ```{r}
-tcr_reactivity <- fread(file.path(aux_dir, "yossef-cohort", "yossef_reactive_tcrs.tsv")) %>% as.data.frame()
+tcr_reactivity <- fread(file.path(resources_dir, "yossef-cohort", "yossef-reactive-tcrs.tsv")) %>% as.data.frame()
 meta <- object@meta.data
 meta$patient <- sub("_.*", "", meta$tag)
 reactive_idx <- match_reactive_tcr_yossef(meta$patient, meta$chains, meta$cdr3, tcr_reactivity)
